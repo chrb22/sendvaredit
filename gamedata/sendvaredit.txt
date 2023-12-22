@@ -1,0 +1,200 @@
+"Games"
+{
+    "#default"
+    {
+        "Keys"
+        {
+            // i = skip, n = nop, integer = shift and nop. processed in reverse order.
+            "SendTable_WritePropList loop break condition mask"
+            {
+                "linux"     "n n n n n n n n"
+                "windows"   "n n n n n n n n n n n n"
+            }
+
+            "SendTable_WritePropList register propindex"
+            {
+                "linux"     "eax"
+                "windows"   "eax"
+            }
+        }
+
+        "Offsets"
+        {
+            "SendTable_WritePropList read propindex"
+            {
+                "windows"   "0x0"
+            }
+
+            "CBaseServer::WriteDeltaEntities size"
+            {
+                "linux"     "0x1ee4"
+                "windows"   "0x878"
+            }
+
+            "CBaseServer::WriteDeltaEntities ebp client"
+            {
+                "linux"     "0xc"
+                "windows"   "0x8"
+            }
+
+            "SendTable_WritePropList ebp table"
+            {
+                "linux"     "0x8"
+                "windows"   "0x8"
+            }
+
+            "SendTable_WritePropList ebp output"
+            {
+                "linux"     "0x14"
+                "windows"   "0x14"
+            }
+
+            "SendTable_WritePropList ebp entity"
+            {
+                "linux"     "0x18"
+                "windows"   "0x18"
+            }
+
+            "SendTable_WritePropList ebp input"
+            {
+                "linux"     "-0x38"
+                "windows"   "-0x40"
+            }
+
+            "SendTable_WritePropList ebp output_lastpropindex"
+            {
+                "linux"     "-0x4c"
+                "windows"   "-0x14"
+            }
+
+            "SendTable_WritePropList ebp input_lastpropindex"
+            {
+                "linux"     "-0x44"
+                "windows"   "-0x8"
+            }
+
+            "SendTable_WritePropList ebp prop"
+            {
+                "linux"     "-0x48"
+                "windows"   "-0x28"
+            }
+
+            "CSendTablePrecalc props"
+            {
+                "linux"     "0x2c"
+                "windows"   "0x2c"
+            }
+
+            "CSendTablePrecalc propcount"
+            {
+                "linux"     "0x38"
+                "windows"   "0x38"
+            }
+        }
+
+        "Signatures"
+        {
+            "CGameServer::SendClientMessages"
+            {
+                "library"   "engine"
+                "linux"     "@_ZN11CGameServer18SendClientMessagesEb"
+                "windows"   "\x55\x8B\xEC\x81\xEC\x30\x04\x00\x00\x53\x56\x57\x33\xDB"
+                // 55 8B EC 81 EC 30 04 00 00 53 56 57 33 DB
+            }
+
+            "CBaseServer::WriteDeltaEntities"
+            {
+                "library"   "engine"
+                "linux"     "\x55\x89\xE5\x57\x56\x53\x81\xEC\x1C\x02\x00\x00\xC7\x85\x2A\x2A\x2A\x2A\x00\x00\x00\x00"
+                // 55 89 E5 57 56 53 81 EC 1C 02 00 00 C7 85 ? ? ? ? 00 00 00 00
+                "windows"   "\x55\x8B\xEC\x81\xEC\x98\x01\x00\x00"
+                // 55 8B EC 81 EC 98 01 00 00
+            }
+
+            "SendTable_WritePropList"
+            {
+                "library"   "engine"
+                "linux"     "\x55\x89\xE5\x57\x56\x53\x83\xEC\x6C\x8B\x7D\x2A"
+                // 55 89 E5 57 56 53 83 EC 6C 8B 7D ?
+                "windows"   "\x55\x8B\xEC\x83\xEC\x40\x83\x7D\x2A\x00"
+                // 55 8B EC 83 EC 40 83 7D ? 00
+            }
+
+            "SendTable_WritePropList loop break condition" // in SendTable_WritePropList
+            {
+                "library"   "engine"
+                "linux"     "\x81\xFE\xFF\x0F\x00\x00\x77\x2A"
+                // 81 FE FF 0F 00 00 77 ?
+                "windows"   "\x81\xFF\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\x38"
+                // 81 FF 00 10 00 00 0F 83 ? ? ? ? 3B 38
+            }
+
+            "SendTable_WritePropList loop break" // in SendTable_WritePropList
+            {
+                "library"   "engine"
+                "linux"     "\x80\x3D\x2A\x2A\x2A\x2A\x00\x74\x2A\x8B\x45\x2A\x8B\x40\x2A\xC7\x04\x24\x2A\x2A\x2A\x2A"
+                // 80 3D ? ? ? ? 00 74 ? 8B 45 ? 8B 40 ? C7 04 24 ? ? ? ?
+                "windows"   "\x80\x3D\x2A\x2A\x2A\x2A\x00\x5F\x5B"
+                // 80 3D ? ? ? ? 00 5F 5B
+            }
+
+            "SendTable_WritePropList loop continue" // in SendTable_WritePropList
+            {
+                "library"   "engine"
+                "linux"     "\x83\x45\x2A\x01\x8B\x45\x2A\x3B\x45\x2A\x0F\x85\x2A\x2A\x2A\x2A\x80\x3D\x2A\x2A\x2A\x2A\x00"
+                // 83 45 ? 01 8B 45 ? 3B 45 ? 0F 85 ? ? ? ? 80 3D ? ? ? ? 00
+                "windows"   "\x41\x83\xC0\x04\x89\x4D\x2A\x89\x45\x2A"
+                // 41 83 C0 04 89 4D ? 89 45 ?
+            }
+
+            "&g_PropTypeFns"
+            {
+                "library"   "engine"
+                "linux"     "@g_PropTypeFns"
+            }
+
+            "mov eax,[eax*0x4 + g_PropTypeFns]"
+            {
+                "library"   "engine"
+                "windows"   "\x8B\x04\x85\x2A\x2A\x2A\x2A\xFF\xD0\x83\xC4\x14"
+                // 8B 04 85 ? ? ? ? FF D0 83 C4 14 in SendTable_EncodeProp inlined in SendTable_Encode
+            }
+        }
+
+        "Addresses"
+        {
+            "SendTable_WritePropList loop break condition"
+            {
+                "signature" "SendTable_WritePropList loop break condition"
+            }
+
+            "SendTable_WritePropList loop break"
+            {
+                "signature" "SendTable_WritePropList loop break"
+            }
+
+            "SendTable_WritePropList loop continue"
+            {
+                "signature" "SendTable_WritePropList loop continue"
+            }
+
+            "CBaseServer::WriteDeltaEntities"
+            {
+                "signature" "CBaseServer::WriteDeltaEntities"
+            }
+
+            "&g_PropTypeFns"
+            {
+                "linux"
+                {
+                    "signature" "&g_PropTypeFns"
+                }
+                "windows"
+                {
+                    "signature" "mov eax,[eax*0x4 + g_PropTypeFns]"
+                    "read"      "3" // &g_PropTypeFns
+                }
+            }
+        }
+    }
+}
