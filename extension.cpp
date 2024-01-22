@@ -816,8 +816,9 @@ DETOUR_DECL_MEMBER1(CGameServer__SendClientMessages, void, bool, b)
         g_Forward_Post_OnSendClientMessages->Execute();
 
     // free handles
+    HandleSecurity security(nullptr, myself->GetIdentity());
     for (Handle_t handle : g_editdatahandles)
-        handlesys->FreeHandle(handle, nullptr);
+        handlesys->FreeHandle(handle, &security);
     g_editdatahandles.clear();
 
     // clear edits
