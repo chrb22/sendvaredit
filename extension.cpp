@@ -859,8 +859,6 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
 
     // detour SendTable_WritePropList to check for an entry
     {
-        CDetourManager::Init(smutils->GetScriptingEngine(), gameconf);
-
         g_Detour_SendTable_WritePropList = DETOUR_CREATE_STATIC(SendTable_WritePropList, "SendTable_WritePropList");
         if(!g_Detour_SendTable_WritePropList)
             RETURN_ERROR("Failed to detour SendTable_WritePropList.");
@@ -1049,9 +1047,9 @@ void SendVarEdit::SDK_OnUnload()
 
     g_Patcher_loop.UnPatch();
 
-    if (g_Detour_SendTable_WritePropList && g_Detour_SendTable_WritePropList->IsEnabled())
+    if (g_Detour_SendTable_WritePropList)
         g_Detour_SendTable_WritePropList->Destroy();
 
-    if (g_Detour_CGameServer__SendClientMessages && g_Detour_CGameServer__SendClientMessages->IsEnabled())
+    if (g_Detour_CGameServer__SendClientMessages)
         g_Detour_CGameServer__SendClientMessages->Destroy();
 }
