@@ -22,6 +22,33 @@ forward void OnSendClientMessagesPost();
 native Handle HasNetworkableProp(int entity, const char[] prop);
 
 /**
+ * Converts an angle to a networkable float (simply ensures the angle will be between 0 and 360).
+ *
+ * @param angle             Angle to convert.
+ */
+native float SendProxyAngle(float angle);
+
+native void SendProxyQAnglesNative(const float qangles[3], float vec[3]);
+/**
+ * Converts a QAngles to a networkable vector (simply ensures the angles will be between 0 and 360).
+ *
+ * @param qangles           QAngles to convert.
+ */
+float[] SendProxyQAngles(const float qangles[3])
+{
+    float vec[3];
+    SendProxyQAnglesNative(qangles, vec);
+    return vec;
+}
+
+/**
+ * Converts the entity index of an EHandle to its networkable integer value. Use -1 to get a value of a non-existent entity.
+ *
+ * @param entity            Entity/edict index to convert.
+ */
+native int SendProxyEHandle(int entity);
+
+/**
  * Stores an integer value to be networked. The handle is freed when client updates are completed.
  *
  * @param value             Value to set.
@@ -32,25 +59,22 @@ native Handle SendVarInt(any value);
  * Stores a float value to be networked. The handle is freed when client updates are completed.
  *
  * @param value             Value to set.
- * @param is_angle          Ensures the angle will be between 0 and 360.
  */
-native Handle SendVarFloat(float value, bool is_angle = false);
+native Handle SendVarFloat(float value);
 
 /**
  * Stores a vector to be networked. The handle is freed when client updates are completed.
  *
  * @param vec               Vector to set.
- * @param is_qangles        Ensures the angles will be between 0 and 360.
  */
-native Handle SendVarVector(const float vec[3], bool is_qangles = false);
+native Handle SendVarVector(const float vec[3]);
 
 /**
  * Stores a 2D vector to be networked. The handle is freed when client updates are completed.
  *
  * @param vec               Vector to set.
- * @param is_qangles        Ensures the angles will be between 0 and 360.
  */
-native Handle SendVarVectorXY(const float vec[2], bool is_qangles = false);
+native Handle SendVarVectorXY(const float vec[2]);
 
 /**
  * Stores a string to be networked. The handle is freed when client updates are completed.
@@ -111,6 +135,9 @@ public Extension __ext_sendvaredit =
 public __ext_sendvaredit_SetNTVOptional()
 {
     MarkNativeAsOptional("HasNetworkableProp");
+    MarkNativeAsOptional("SendProxyAngle");
+    MarkNativeAsOptional("SendProxyQAnglesNative");
+    MarkNativeAsOptional("SendProxyEHandle");
     MarkNativeAsOptional("SendVarInt");
     MarkNativeAsOptional("SendVarFloat");
     MarkNativeAsOptional("SendVarVector");

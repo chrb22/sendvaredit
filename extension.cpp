@@ -48,6 +48,7 @@
 #include <server_class.h>
 #include <dt_common.h>
 #include <dt_send.h>
+#include <edict.h>
 
 #define JMP_SIZE 5
 #include <asm/asm.h>
@@ -200,6 +201,66 @@ GameInfo g_gameinfo;
 
 
 
+bool GetEntityInfo(IPluginContext* pContext, int entref, int* index, edict_t** edict, CBaseEntity** entity, IServerUnknown** unknown, IServerNetworkable** networkable)
+{
+    *index = gamehelpers->ReferenceToIndex(entref);
+    *edict = gamehelpers->EdictOfIndex(*index);
+    if (!(*edict))
+        return pContext->ThrowNativeError("Entity %d (%d) is invalid.", *index, entref);
+
+    *entity = gamehelpers->ReferenceToEntity(entref);
+
+    *unknown = (IServerUnknown *)(*entity);
+    *networkable = (*unknown)->GetNetworkable();
+    if (!(*networkable))
+        return pContext->ThrowNativeError("Edict %d (%d) is not networkable", *index, entref);
+
+    return true;
+}
+
+// float SendProxyAngle(float angle)
+cell_t smn_SendProxyAngle(IPluginContext* pContext, const cell_t* params)
+{
+    return sp_ftoc(anglemod(params[1]));
+}
+
+// void SendProxyQAnglesNative(const float qangles[3], float vec[3])
+cell_t smn_SendProxyQAngles(IPluginContext* pContext, const cell_t* params)
+{
+    cell_t *sp_qangles;
+    pContext->LocalToPhysAddr(params[1], &sp_qangles);
+
+    cell_t *sp_vec;
+    pContext->LocalToPhysAddr(params[2], &sp_vec);
+
+    for (int i = 0; i < 3; i++)
+        sp_vec[i] = sp_ftoc(anglemod(sp_ctof(sp_qangles[i])));
+
+    return 0;
+}
+
+// int SendProxyEHandle(int entity)
+cell_t smn_SendProxyEHandle(IPluginContext* pContext, const cell_t* params)
+{
+    int entref = params[1];
+    if (entref == -1)
+        return INVALID_NETWORKED_EHANDLE_VALUE;
+
+    int index;
+    edict_t* edict;
+    CBaseEntity* entity;
+    IServerUnknown *unknown;
+    IServerNetworkable *networkable;
+    if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
+        return INVALID_NETWORKED_EHANDLE_VALUE;
+
+    const CBaseHandle* handle = &unknown->GetRefEHandle();
+
+    // doing what SendProxy_EHandleToInt is doing
+    int serial = handle->GetSerialNumber() & ((1 << NUM_NETWORKED_EHANDLE_SERIAL_NUMBER_BITS) - 1);
+    return handle->GetEntryIndex() | (serial << MAX_EDICT_BITS);
+}
+
 HandleType_t g_SendVarType = 0;
 class SendVarTypeHandler : public IHandleTypeDispatch
 {
@@ -258,14 +319,10 @@ cell_t smn_SendVarInt(IPluginContext* pContext, const cell_t* params)
     return CreateSendVarHandle(pContext, var);
 }
 
-// SendVarFloat(float value, bool is_angle = false)
+// SendVarFloat(float value)
 cell_t smn_SendVarFloat(IPluginContext* pContext, const cell_t* params)
 {
     float value = params[1];
-
-    bool is_angle = params[2];
-    if (is_angle)
-        value = anglemod(value);
 
     DVariant var;
     var.m_Type = DPT_Float;
@@ -274,7 +331,7 @@ cell_t smn_SendVarFloat(IPluginContext* pContext, const cell_t* params)
     return CreateSendVarHandle(pContext, var);
 }
 
-// Handle SendVarVector(const float vec[3], bool is_qangles = false)
+// Handle SendVarVector(const float vec[3])
 cell_t smn_SendVarVector(IPluginContext* pContext, const cell_t* params)
 {
     cell_t *sp_vec;
@@ -284,11 +341,6 @@ cell_t smn_SendVarVector(IPluginContext* pContext, const cell_t* params)
     for (int i = 0; i < 3; i++)
         vec[i] = sp_ctof(sp_vec[i]);
 
-    bool is_qangles = params[2];
-    if (is_qangles)
-        for (int i = 0; i < 3; i++)
-            vec[i] = anglemod(vec[i]);
-
     DVariant var;
     var.m_Type = DPT_Vector;
     for (int i = 0; i < 3; i++)
@@ -297,7 +349,7 @@ cell_t smn_SendVarVector(IPluginContext* pContext, const cell_t* params)
     return CreateSendVarHandle(pContext, var);
 }
 
-// Handle SendVarVectorXY(const float vec[2], bool is_qangles = false)
+// Handle SendVarVectorXY(const float vec[2])
 cell_t smn_SendVarVectorXY(IPluginContext* pContext, const cell_t* params)
 {
     cell_t *sp_vec;
@@ -306,11 +358,6 @@ cell_t smn_SendVarVectorXY(IPluginContext* pContext, const cell_t* params)
     Vector vec;
     for (int i = 0; i < 2; i++)
         vec[i] = sp_ctof(sp_vec[i]);
-
-    bool is_qangles = params[2];
-    if (is_qangles)
-        for (int i = 0; i < 2; i++)
-            vec[i] = anglemod(vec[i]);
 
     DVariant var;
     var.m_Type = DPT_VectorXY;
@@ -401,23 +448,6 @@ bool FindClassSendPropInfo(ServerClass* serverclass, const char* propname, SendP
         *info = SendPropInfo { *prop, propindex };
         sendtableinfo->lookup.insert(propname, *info);
     }
-
-    return true;
-}
-
-bool GetEntityInfo(IPluginContext* pContext, int entref, int* index, edict_t** edict, CBaseEntity** entity, IServerUnknown** unknown, IServerNetworkable** networkable)
-{
-    *index = gamehelpers->ReferenceToIndex(entref);
-    *edict = gamehelpers->EdictOfIndex(*index);
-    if (!(*edict))
-        return pContext->ThrowNativeError("Entity %d (%d) is invalid.", *index, entref);
-
-    *entity = gamehelpers->ReferenceToEntity(entref);
-
-    *unknown = (IServerUnknown *)(*entity);
-    *networkable = (*unknown)->GetNetworkable();
-    if (!(*networkable))
-        return pContext->ThrowNativeError("Edict %d (%d) is not networkable", *index, entref);
 
     return true;
 }
@@ -604,6 +634,9 @@ cell_t smn_OmitSendVar(IPluginContext* pContext, const cell_t* params)
 
 const sp_nativeinfo_t MyNatives[] =
 {
+    {"SendProxyAngle", smn_SendProxyAngle},
+    {"SendProxyQAnglesNative", smn_SendProxyQAngles},
+    {"SendProxyEHandle", smn_SendProxyEHandle},
     {"HasNetworkableProp", smn_HasNetworkableProp},
     {"SendVarInt", smn_SendVarInt},
     {"SendVarFloat", smn_SendVarFloat},
