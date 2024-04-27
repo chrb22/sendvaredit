@@ -11,6 +11,7 @@
                 "windows"   "n n n n n n n n n n n n"
             }
 
+            // the other value in the comparison right after the break condition
             "SendTable_WritePropList register propindex"
             {
                 "linux"     "esi"
@@ -22,13 +23,13 @@
         {
             "SendTable_WritePropList read propindex"
             {
-                "windows"   "0x0"
+                // no OS needs this currently
             }
 
             "CBaseServer::WriteDeltaEntities size"
             {
                 "linux"     "0x17cf"
-                "windows"   "0x878"
+                "windows"   "0x7df"
             }
 
             "CBaseServer::WriteDeltaEntities ebp client"
@@ -58,25 +59,25 @@
             "SendTable_WritePropList ebp input"
             {
                 "linux"     "-0x30"
-                "windows"   "-0x40"
+                "windows"   "-0x1c"
             }
 
             "SendTable_WritePropList ebp output_lastpropindex"
             {
                 "linux"     "-0x48"
-                "windows"   "-0x14"
+                "windows"   "-0x3c"
             }
 
             "SendTable_WritePropList ebp input_lastpropindex"
             {
                 "linux"     "-0x40"
-                "windows"   "-0x8"
+                "windows"   "-0x28"
             }
 
             "SendTable_WritePropList ebp prop"
             {
                 "linux"     "-0x4c"
-                "windows"   "-0x28"
+                "windows"   "-0x2c"
             }
 
             "CSendTablePrecalc props"
@@ -98,8 +99,8 @@
             {
                 "library"   "engine"
                 "linux"     "@_ZN11CGameServer18SendClientMessagesEb"
-                "windows"   "\x55\x8B\xEC\x81\xEC\x30\x04\x00\x00\x53\x56\x57\x33\xDB"
-                // 55 8B EC 81 EC 30 04 00 00 53 56 57 33 DB
+                "windows"   "\x55\x8B\xEC\x81\xEC\x34\x04\x00\x00\x53\x56\x8B\xF1"
+                // 55 8B EC 81 EC 34 04 00 00 53 56 8B F1
             }
 
             "CBaseServer::WriteDeltaEntities"
@@ -115,8 +116,8 @@
                 "library"   "engine"
                 "linux"     "\x55\x89\xE5\x57\x56\x53\x83\xEC\x5C\x8B\x4D\x2A\x8B\x75\x2A"
                 // 55 89 E5 57 56 53 83 EC 5C 8B 4D ? 8B 75 ?
-                "windows"   "\x55\x8B\xEC\x83\xEC\x40\x83\x7D\x2A\x00"
-                // 55 8B EC 83 EC 40 83 7D ? 00
+                "windows"   "\x55\x8B\xEC\x81\xEC\x84\x02\x00\x00\x83\x7D\x2A\x00"
+                // 55 8B EC 81 EC 84 02 00 00 83 7D ? 00
             }
 
             "SendTable_WritePropList loop break condition" // in SendTable_WritePropList
@@ -124,8 +125,8 @@
                 "library"   "engine"
                 "linux"     "\x3D\xFF\x0F\x00\x00\x0F\x87\x2A\x2A\x2A\x2A\x39\xC6"
                 // 3D FF 0F 00 00 0F 87 ? ? ? ? 39 C6
-                "windows"   "\x81\xFF\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\x38"
-                // 81 FF 00 10 00 00 0F 83 ? ? ? ? 3B 38
+                "windows"   "\x81\xFB\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\xD8"
+                // 81 FB 00 10 00 00 0F 83 ? ? ? ? 3B D8
             }
 
             "SendTable_WritePropList loop break" // in SendTable_WritePropList
@@ -133,8 +134,8 @@
                 "library"   "engine"
                 "linux"     "\x80\x3D\x2A\x2A\x2A\x2A\x00\x74\x2A\x8B\x45\x2A\x83\xEC\x04"
                 // 80 3D ? ? ? ? 00 74 ? 8B 45 ? 83 EC 04
-                "windows"   "\x80\x3D\x2A\x2A\x2A\x2A\x00\x5F\x5B"
-                // 80 3D ? ? ? ? 00 5F 5B
+                "windows"   "\x8B\x35\x2A\x2A\x2A\x2A\x80\x3D\x2A\x2A\x2A\x2A\x00"
+                // 8B 35 ? ? ? ? 80 3D ? ? ? ? 00
             }
 
             "SendTable_WritePropList loop continue" // in SendTable_WritePropList
@@ -142,8 +143,8 @@
                 "library"   "engine"
                 "linux"     "\x83\x45\x2A\x01\x83\x45\x2A\x04"
                 // 83 45 ? 01 83 45 ? 04
-                "windows"   "\x41\x83\xC0\x04\x89\x4D\x2A\x89\x45\x2A"
-                // 41 83 C0 04 89 4D ? 89 45 ?
+                "windows"   "\x8B\x45\x2A\x41\x8B\x35\x2A\x2A\x2A\x2A"
+                // 8B 45 ? 41 8B 35 ? ? ? ?
             }
 
             "&g_PropTypeFns"
