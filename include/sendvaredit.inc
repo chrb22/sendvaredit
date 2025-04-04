@@ -34,7 +34,7 @@ native void SendProxyQAnglesNative(const float qangles[3], float vec[3]);
  *
  * @param qangles           QAngles to convert.
  */
-float[] SendProxyQAngles(const float qangles[3])
+stock float[] SendProxyQAngles(const float qangles[3])
 {
     float vec[3];
     SendProxyQAnglesNative(qangles, vec);
