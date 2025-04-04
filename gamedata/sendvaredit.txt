@@ -4,13 +4,6 @@
     {
         "Keys"
         {
-            // i = skip, n = nop, integer = shift and nop. processed in reverse order.
-            "SendTable_WritePropList loop break condition mask"
-            {
-                "linux"     "n n n n n n n n n n n"
-                "windows"   "n n n n n n n n n n n n"
-            }
-
             // the other value in the comparison right after the break condition
             "SendTable_WritePropList register propindex"
             {
@@ -129,15 +122,6 @@
                 // 81 FB 00 10 00 00 0F 83 ? ? ? ? 3B D8
             }
 
-            "SendTable_WritePropList loop break" // in SendTable_WritePropList
-            {
-                "library"   "engine"
-                "linux"     "\x80\x3D\x2A\x2A\x2A\x2A\x00\x74\x2A\x8B\x45\x2A\x83\xEC\x04"
-                // 80 3D ? ? ? ? 00 74 ? 8B 45 ? 83 EC 04
-                "windows"   "\x8B\x35\x2A\x2A\x2A\x2A\x80\x3D\x2A\x2A\x2A\x2A\x00"
-                // 8B 35 ? ? ? ? 80 3D ? ? ? ? 00
-            }
-
             "SendTable_WritePropList loop continue" // in SendTable_WritePropList
             {
                 "library"   "engine"
@@ -166,11 +150,6 @@
             "SendTable_WritePropList loop break condition"
             {
                 "signature" "SendTable_WritePropList loop break condition"
-            }
-
-            "SendTable_WritePropList loop break"
-            {
-                "signature" "SendTable_WritePropList loop break"
             }
 
             "SendTable_WritePropList loop continue"

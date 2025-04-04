@@ -36,9 +36,8 @@
  * @brief Implement extension code here.
  */
 
-#include "patch.h"
-
 #include <string>
+#include <cstddef>
 
 #include <sm_namehashset.h>
 
@@ -50,12 +49,7 @@
 #include <dt_send.h>
 #include <edict.h>
 
-#define JMP_SIZE 5
-#include <asm/asm.h>
-#include <macro-assembler-x86.h>
-#include <jit/jit_helpers.h>
-#include <CDetour/detourhelpers.h>
-#include <CDetour/detours.h>
+#include <safetyhook.hpp>
 
 SendVarEdit g_SendVarEdit;		/**< Global singleton for extension's main interface */
 
@@ -173,6 +167,17 @@ struct Stack_SendTable_WritePropList
     int prop; // SendProp*
 };
 
+struct PropIndex_SendTable_WritePropList
+{
+    size_t reg;
+    int32_t read; // if not -1, treat register as a pointer and read at this offset
+};
+
+struct Point_SendTable_WritePropList
+{
+    void* loop_continue;
+};
+
 struct PropTypeFns
 {
     void (*Encode)(void* _struct, DVariant* var, SendProp* prop, bf_write* buffer, int entity);
@@ -190,12 +195,42 @@ struct GameInfo
 {
     FunctionSpan span_WDE;
     Stack_CGameServer__WriteDeltaEntities stack_WDE;
+
     Stack_SendTable_WritePropList stack_WPL;
+    PropIndex_SendTable_WritePropList propindex_WPL;
+    Point_SendTable_WritePropList point_WPL;
 
     PropTypeFns* proptypefns;
     Struct_CSendTablePrecalc struct_STP;
 };
 GameInfo g_gameinfo;
+
+struct RegisterInfo { const char* name;  size_t offset; };
+#define REG_INFO(NAME) { #NAME, offsetof(safetyhook::Context, NAME) }
+RegisterInfo g_registers[] {
+    REG_INFO(eflags),
+    REG_INFO(edi),
+    REG_INFO(esi),
+    REG_INFO(edx),
+    REG_INFO(ecx),
+    REG_INFO(ebx),
+    REG_INFO(eax),
+    REG_INFO(ebp),
+    REG_INFO(esp),
+    REG_INFO(trampoline_esp),
+    REG_INFO(eip),
+};
+
+const RegisterInfo* FindRegister(const char* name)
+{
+    auto register_propindex = std::find_if(
+        std::begin(g_registers),
+        std::end(g_registers),
+        [name](const RegisterInfo &info) { return strcmp(info.name, name) == 0; }
+    );
+
+    return register_propindex != std::end(g_registers) ? register_propindex : nullptr;
+}
 
 
 
@@ -693,7 +728,8 @@ EditEntry* DiscoverEntry(int entity)
     return list->GetEntry(client);
 }
 
-DETOUR_DECL_STATIC7(SendTable_WritePropList, void, SendTable*, sendtable, void*, inputdata, int, inputlength, bf_write*, output, int, entity, int*, propindexlist, int, propindexlistlength)
+safetyhook::InlineHook g_Hook_SendTable_WritePropList{};
+void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inputlength, bf_write* output, int entity, int* propindexlist, int propindexlistlength)
 {
     EditEntry* entry = DiscoverEntry(entity);
 
@@ -703,8 +739,7 @@ DETOUR_DECL_STATIC7(SendTable_WritePropList, void, SendTable*, sendtable, void*,
 
     if (!entry) {
         // normal call
-        DETOUR_STATIC_CALL(SendTable_WritePropList)(sendtable, inputdata, inputlength, output, entity, propindexlist, propindexlistlength);
-        return;
+        return g_Hook_SendTable_WritePropList.unsafe_call(sendtable, inputdata, inputlength, output, entity, propindexlist, propindexlistlength);
     }
 
     // might as well sort the edits here where it is potentially threaded
@@ -764,23 +799,61 @@ DETOUR_DECL_STATIC7(SendTable_WritePropList, void, SendTable*, sendtable, void*,
     propindexlistlength = length;
 
     // custom call
-    DETOUR_STATIC_CALL(SendTable_WritePropList)(sendtable, inputdata, inputlength, output, entity, propindexlist, propindexlistlength);
+    return g_Hook_SendTable_WritePropList.unsafe_call(sendtable, inputdata, inputlength, output, entity, propindexlist, propindexlistlength);
 }
-CDetour *g_Detour_SendTable_WritePropList = nullptr;
+
+class ContextUtil
+{
+public:
+    safetyhook::Context &registers;
+
+public:
+    ContextUtil(safetyhook::Context &context)
+        : registers(context)
+    {}
+
+    inline uintptr_t& reg(size_t reg) { return *(uintptr_t*)((uint8_t*)&registers + reg); }
+    inline safetyhook::Xmm& xmm(size_t reg) { return *(safetyhook::Xmm*)((uint8_t*)&registers + reg); }
+
+    inline void*& ip()
+    {
+        return *(void**)&registers.eip;
+    }
+
+    template<typename T>
+    inline T& read(size_t reg, int32_t offset=0)
+    {
+        return *(T*)(this->reg(reg) + offset);
+    }
+
+    template<typename T>
+    inline T& stack(int32_t offset)
+    {
+        return *(T*)(registers.ebp + offset);
+    }
+};
 
 // does the same thing as SendTable_WritePropList, but instead of copying from the input buffer it encodes the given DVariant
-bool __cdecl SendVarEdit_Edit(void* ebp, int propindex)
+safetyhook::MidHook g_MidHook_SendTable_WritePropList_BreakCondition{};
+void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registers)
 {
-    // get saved entry pointer (see comment in SendTable_WritePropList detour)
-    const EditEntry* entry = *(const EditEntry**)((char*)ebp + g_gameinfo.stack_WPL.entity);
+    ContextUtil context(registers);
 
-    SendTable* table = *(SendTable**)((char*)ebp + g_gameinfo.stack_WPL.table);
+    // get saved entry pointer (see comment in SendTable_WritePropList detour)
+    // if there isn't an edit entry, then let the code run normally
+    const EditEntry* entry = context.stack<EditEntry*>(g_gameinfo.stack_WPL.entity);
+    if (!entry)
+        return;
+
+    SendTable* table = context.stack<SendTable*>(g_gameinfo.stack_WPL.table);
     SendProp** props = *(SendProp***)((char*)table->m_pPrecalc + g_gameinfo.struct_STP.props);
+
+    int propindex = g_gameinfo.propindex_WPL.read == -1 ? context.reg(g_gameinfo.propindex_WPL.reg) : context.read<int>(g_gameinfo.propindex_WPL.reg, g_gameinfo.propindex_WPL.read);
     SendProp* prop = props[propindex];
 
-    // no support for arrays and data tables for now
+    // no support for arrays and data tables (sent as multiple seperate props i think)
     if (prop->GetType() == DPT_Array || prop->GetType() == DPT_DataTable)
-        return false;
+        return;
 
     // smutils->LogMessage(myself, "edit: prop = %d, %s", propindex, prop->GetName());
 
@@ -794,19 +867,19 @@ bool __cdecl SendVarEdit_Edit(void* ebp, int propindex)
     }
 
     if (!info)
-        return false;
+        return;
 
     // const char* string = ((DVariant*)(info->var))->ToString();
     // smutils->LogMessage(myself, "edit: entry = %d, %s", info->propindex, string);
 
-    bf_read* input = (bf_read*)((char*)ebp + g_gameinfo.stack_WPL.input);
-    bf_write* output = *(bf_write**)((char*)ebp + g_gameinfo.stack_WPL.output);
+    bf_read* input = &context.stack<bf_read>(g_gameinfo.stack_WPL.input);
+    bf_write* output = context.stack<bf_write*>(g_gameinfo.stack_WPL.output);
 
     // follow procedure of the SendTable_WritePropList loop, but encode instead of copy
 
     // write prop index delta and update variable keeping track of the last output propindex
     {
-        int* output_lastpropindex = (int*)((char*)ebp + g_gameinfo.stack_WPL.output_lastpropindex);
+        int* output_lastpropindex = &context.stack<int>(g_gameinfo.stack_WPL.output_lastpropindex);
 
         int diff = propindex - *output_lastpropindex;
         *output_lastpropindex = propindex;
@@ -829,37 +902,41 @@ bool __cdecl SendVarEdit_Edit(void* ebp, int propindex)
         //     break;
     }
 
-    return true;
+    // continue; the loop
+    context.ip() = g_gameinfo.point_WPL.loop_continue;
 }
-
-Patcher g_Patcher_loop;
-void* g_Detour_loop;
 
 IForward *g_Forward_Pre_OnSendClientMessages;
 IForward *g_Forward_Post_OnSendClientMessages;
 
-DETOUR_DECL_MEMBER1(CGameServer__SendClientMessages, void, bool, b)
+safetyhook::InlineHook g_Hook_CGameServer__SendClientMessages{};
+class Hook_CGameServer
 {
-    if (g_Forward_Pre_OnSendClientMessages->GetFunctionCount())
-        g_Forward_Pre_OnSendClientMessages->Execute();
+public:
+    void SendClientMessages(bool b)
+    {
+        if (g_Forward_Pre_OnSendClientMessages->GetFunctionCount())
+            g_Forward_Pre_OnSendClientMessages->Execute();
 
-    DETOUR_MEMBER_CALL(CGameServer__SendClientMessages)(b);
+        g_Hook_CGameServer__SendClientMessages.thiscall(this, b);
 
-    if (g_Forward_Post_OnSendClientMessages->GetFunctionCount())
-        g_Forward_Post_OnSendClientMessages->Execute();
+        if (g_Forward_Post_OnSendClientMessages->GetFunctionCount())
+            g_Forward_Post_OnSendClientMessages->Execute();
 
-    // free handles
-    HandleSecurity security(nullptr, myself->GetIdentity());
-    for (Handle_t handle : g_editdatahandles)
-        handlesys->FreeHandle(handle, &security);
-    g_editdatahandles.clear();
+        // free handles
+        HandleSecurity security(nullptr, myself->GetIdentity());
+        for (Handle_t handle : g_editdatahandles)
+            handlesys->FreeHandle(handle, &security);
+        g_editdatahandles.clear();
 
-    // clear edits
-    std::fill(g_editindices, g_editindices + MAX_EDICTS, -1);
-    g_editlists.clear();
-    g_editbuffer.clear();
-}
-CDetour *g_Detour_CGameServer__SendClientMessages = nullptr;
+        // clear edits
+        std::fill(g_editindices, g_editindices + MAX_EDICTS, -1);
+        g_editlists.clear();
+        g_editbuffer.clear();
+
+        return;
+    }
+};
 
 #define RETURN_ERROR(ERR)                                \
 {                                                        \
@@ -879,26 +956,6 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
     if (!gameconfs->LoadGameConfigFile("sendvaredit", &gameconf, error, maxlength))
         return false;
 
-    CDetourManager::Init(smutils->GetScriptingEngine(), gameconf);
-
-    // detour CGameServer::SendClientMessages to catch when the server is about to network stuff to clients
-    {
-        g_Detour_CGameServer__SendClientMessages = DETOUR_CREATE_MEMBER(CGameServer__SendClientMessages, "CGameServer::SendClientMessages");
-        if(!g_Detour_CGameServer__SendClientMessages)
-            RETURN_ERROR("Failed to detour CGameServer::SendClientMessages.");
-
-        g_Detour_CGameServer__SendClientMessages->EnableDetour();
-    }
-
-    // detour SendTable_WritePropList to check for an entry
-    {
-        g_Detour_SendTable_WritePropList = DETOUR_CREATE_STATIC(SendTable_WritePropList, "SendTable_WritePropList");
-        if(!g_Detour_SendTable_WritePropList)
-            RETURN_ERROR("Failed to detour SendTable_WritePropList.");
-
-        g_Detour_SendTable_WritePropList->EnableDetour();
-    }
-
     // fill out game info struct
     {
         if (!gameconf->GetAddress("CBaseServer::WriteDeltaEntities", &g_gameinfo.span_WDE.start))
@@ -915,6 +972,23 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
         gameconf->GetOffset("SendTable_WritePropList ebp input_lastpropindex", &g_gameinfo.stack_WPL.input_lastpropindex);
         gameconf->GetOffset("SendTable_WritePropList ebp prop", &g_gameinfo.stack_WPL.prop);
 
+        const char* register_propindex_string = gameconf->GetKeyValue("SendTable_WritePropList register propindex");
+        if (!register_propindex_string)
+            RETURN_ERROR("Failed to get SendTable_WritePropList propindex register name.");
+
+        const RegisterInfo* register_propindex = FindRegister(register_propindex_string);
+        if (!register_propindex)
+            RETURN_ERROR("Failed to match SendTable_WritePropList propindex register name.");
+
+        g_gameinfo.propindex_WPL.reg = register_propindex->offset;
+
+        int32_t read_propindex = -1;
+        gameconf->GetOffset("SendTable_WritePropList read propindex", &read_propindex);
+        g_gameinfo.propindex_WPL.read = read_propindex;
+
+        if (!gameconf->GetAddress("SendTable_WritePropList loop continue", &g_gameinfo.point_WPL.loop_continue))
+            RETURN_ERROR("Failed to find SendTable_WritePropList loop continuation point.");
+
         if (!gameconf->GetAddress("&g_PropTypeFns", (void**)&g_gameinfo.proptypefns))
             RETURN_ERROR("Failed to find g_PropTypeFns.");
 
@@ -922,115 +996,44 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
         gameconf->GetOffset("CSendTablePrecalc propcount", &g_gameinfo.struct_STP.propcount);
     }
 
-    // write a detour that calls SendVarEdit_Edit and skips to the continuation point if it returns true
+    // hook CGameServer::SendClientMessages to catch when the server is about to network stuff to clients
     {
-        const char* register_propindex_string = gameconf->GetKeyValue("SendTable_WritePropList register propindex");
+        void* address;
+        if (!gameconf->GetMemSig("CGameServer::SendClientMessages", &address))
+            RETURN_ERROR("Failed to find CGameServer::SendClientMessages.");
 
-        sp::Register register_propindex;
-        bool register_match = false;
-        for (int regnum = 0; regnum < 8; regnum++) {
-            register_propindex = sp::Register { regnum };
-            if (strcmp(register_propindex_string, register_propindex.name()) == 0) {
-                register_match = true;
-                break;
-            }
-        }
+        auto function = &Hook_CGameServer::SendClientMessages;
+        auto hook = safetyhook::InlineHook::create(address, (void*&)function);
+        if (!hook.has_value())
+            RETURN_ERROR("Failed to hook CGameServer::SendClientMessages.");
 
-        if (!register_match)
-            RETURN_ERROR("Failed to match SendTable_WritePropList propindex register name.");
+        g_Hook_CGameServer__SendClientMessages = std::move(*hook);
+    }
 
-        void* loop_continue_addr;
-        if (!gameconf->GetAddress("SendTable_WritePropList loop continue", &loop_continue_addr))
-            RETURN_ERROR("Failed to find SendTable_WritePropList loop continuation point.");
+    // hook SendTable_WritePropList to check for an entry
+    {
+        void* address;
+        if (!gameconf->GetMemSig("SendTable_WritePropList", &address))
+            RETURN_ERROR("Failed to find SendTable_WritePropList.");
 
-        void* loop_break_addr;
-        if (!gameconf->GetAddress("SendTable_WritePropList loop break", &loop_break_addr))
-            RETURN_ERROR("Failed to find SendTable_WritePropList loop break point.");
+        auto hook = safetyhook::InlineHook::create(address, Hook_SendTable_WritePropList);
+        if (!hook.has_value())
+            RETURN_ERROR("Failed to hook SendTable_WritePropList.");
 
-        void* base;
-        if (!gameconf->GetAddress("SendTable_WritePropList loop break condition", &base))
+        g_Hook_SendTable_WritePropList = std::move(*hook);
+    }
+
+    // create a mid-hook at the SendTable_WritePropList loop break condition that skips to the continuation point if an edit was made
+    {
+        void* address;
+        if (!gameconf->GetAddress("SendTable_WritePropList loop break condition", &address))
             RETURN_ERROR("Failed to find SendTable_WritePropList loop break condition.");
 
-        const char* mask_string = gameconf->GetKeyValue("SendTable_WritePropList loop break condition mask");
-        PatchMask mask((std::string(mask_string)));
-        if (!mask.Valid())
-            RETURN_ERROR("Failed to parse SendTable_WritePropList loop break condition mask.");
+        auto midhook = safetyhook::MidHook::create(address, MidHook_SendTable_WritePropList_BreakCondition);
+        if (!midhook.has_value())
+            RETURN_ERROR("Failed to mid-hook CGameServer::SendClientMessages.");
 
-        sp::MacroAssembler masm_edit;
-        sp::Label label_resume;
-
-        // if there isn't an edit entry, then jump back to let code run normally (see comment in SendTable_WritePropList detour)
-        masm_edit.cmpl(sp::Operand(sp::ebp, g_gameinfo.stack_WPL.entity), (int32_t)nullptr);
-        masm_edit.j(sp::equal, &label_resume);
-
-        // store volatile registers
-        masm_edit.push(sp::eax); // 1
-        masm_edit.push(sp::ecx); // 2
-        masm_edit.push(sp::edx); // 3
-
-        // stack pointer should be a multiple of 16 on function call
-        masm_edit.subl(sp::esp, 3*0x4); // 6
-
-        // push propindex as 2nd parameter
-        int offset_propindex;
-        if (gameconf->GetOffset("SendTable_WritePropList read propindex", &offset_propindex))
-            masm_edit.push(sp::Operand(register_propindex, offset_propindex)); // 7
-        else
-            masm_edit.push(register_propindex); // 7
-
-        // push ebp as 1st parameter
-        masm_edit.push(sp::ebp); // 8
-
-        // call SendVarEdit_Edit
-        masm_edit.call(ExternalAddress((void*)&SendVarEdit_Edit));
-
-        // remove parameters from stack
-        masm_edit.addl(sp::esp, 2*0x4); // 2
-
-        // undo stack alignment
-        masm_edit.addl(sp::esp, 3*0x4); // 5
-
-        // compare return value
-        masm_edit.cmpb(sp::r8_al, (int8_t)false);
-
-        // restore volatile registers
-        masm_edit.pop(sp::edx); // 6
-        masm_edit.pop(sp::ecx); // 7
-        masm_edit.pop(sp::eax); // 8
-
-        // if the return value was false then exit the detour
-        masm_edit.j(sp::ConditionCode::equal, &label_resume);
-
-        // jump to loop continuation point if return value was true
-        masm_edit.jmp(ExternalAddress(loop_continue_addr));
-
-        masm_edit.bind(&label_resume); // resume
-
-        // reimplement the part the detour overwrote (if (input_lastpropindex >= MAX_DATATABLE_PROPS) break;)
-        sp::Label label_break;
-        masm_edit.cmpl(sp::Operand(sp::ebp, g_gameinfo.stack_WPL.input_lastpropindex), MAX_DATATABLE_PROPS);
-        masm_edit.j(sp::above_equal, &label_break);
-
-        // jump back to where the detour was made
-        masm_edit.jmp(ExternalAddress((char*)base + mask.WritableSize()));
-
-        // break loop
-        masm_edit.bind(&label_break); // break
-        masm_edit.jmp(ExternalAddress(loop_break_addr));
-
-        // create buffer for custom assembly
-        g_Detour_loop = smutils->GetScriptingEngine()->AllocatePageMemory(masm_edit.length());
-
-        // write custom assembly
-        masm_edit.emitToExecutableMemory(g_Detour_loop);
-
-        // create jump patch to detour
-        sp::MacroAssembler masm_jump;
-        masm_jump.jmp(ExternalAddress(g_Detour_loop));
-
-        new(&g_Patcher_loop) Patcher(base, mask);
-        if (!g_Patcher_loop.Patch(masm_jump))
-            RETURN_ERROR("Failed to create overwrite patch.");
+        g_MidHook_SendTable_WritePropList_BreakCondition = std::move(*midhook);
     }
 
     gameconfs->CloseGameConfigFile(gameconf);
@@ -1075,14 +1078,13 @@ void SendVarEdit::SDK_OnUnload()
     if (g_Forward_Post_OnSendClientMessages)
         forwards->ReleaseForward(g_Forward_Post_OnSendClientMessages);
 
-    if (g_Detour_loop)
-        smutils->GetScriptingEngine()->FreePageMemory(g_Detour_loop);
+    if (g_MidHook_SendTable_WritePropList_BreakCondition.enabled())
+        g_MidHook_SendTable_WritePropList_BreakCondition = {};
 
-    g_Patcher_loop.UnPatch();
+    if (g_Hook_SendTable_WritePropList.enabled())
+        g_Hook_SendTable_WritePropList = {};
 
-    if (g_Detour_SendTable_WritePropList)
-        g_Detour_SendTable_WritePropList->Destroy();
 
-    if (g_Detour_CGameServer__SendClientMessages)
-        g_Detour_CGameServer__SendClientMessages->Destroy();
+    if (g_Hook_CGameServer__SendClientMessages.enabled())
+        g_Hook_CGameServer__SendClientMessages = {};
 }

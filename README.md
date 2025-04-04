@@ -12,16 +12,16 @@ The extension works with entity properties, the same that you're used to with th
     - `git clone https://github.com/alliedmodders/ambuild`
     - `pip install ./ambuild`
 2. Fetch dependencies.
-    - `git clone https://github.com/alliedmodders/metamod-source mmsource -b 1.11-dev`
-    - `git clone --recursive https://github.com/alliedmodders/sourcemod sourcemod -b 1.11-dev`
+    - `git clone https://github.com/alliedmodders/metamod-source mmsource -b 1.12-dev`
+    - `git clone --recursive https://github.com/alliedmodders/sourcemod sourcemod -b 1.12-dev`
     - `git clone https://github.com/alliedmodders/hl2sdk hl2sdk-<SDK> -b <SDK>` (replace `<SDK>` with the game(s) you want to compile for, e.g. `tf2`)
 3. Fetch SendVarEdit.
-    - `git clone https://github.com/chrb22/sendvaredit`
+    - `git clone --recursive https://github.com/chrb22/sendvaredit`
 4. Set up build environment.
     - `cd sendvaredit`
     - `mkdir build`
     - `cd build`
-    - `python ../configure.py --mms-path="../../mmsource" --sm-path="../../sourcemod" --hl2sdk-root="../.." --sdks=present --enable-optimize`
+    - `CC=gcc CXX=g++ python ../configure.py --mms-path="../../mmsource" --sm-path="../../sourcemod" --hl2sdk-manifest-path="../../sourcemod/hl2sdk-manifests" --hl2sdk-root="../.." --sdks=present --targets=x86 --enable-optimize`
 5. Compile extension.
     - `ambuild`
     - The build will be in `sendvaredit/build/package`

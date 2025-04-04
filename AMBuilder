@@ -1,19 +1,41 @@
 # vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
-import os, sys
+import os
 
+# Name of your extesion, this will also be it's file name.
 projectName = 'sendvaredit'
+
+class SafetyHook(object):
+  def __init__(self):
+    self.all_targets = []
+    self.libsafetyhook = {}
+  def configure(self):
+    target_archs = []
+    if builder.options.targets:
+      target_archs = builder.options.targets.split(',')
+    else:
+      target_archs = ['x86', 'x86_64']
+
+    for arch in target_archs:
+      try:
+        cxx = builder.DetectCxx(target_arch = arch)
+      except Exception as e:
+        if builder.options.targets:
+          raise
+        print('Skipping target {}: {}'.format(arch, e))
+        continue
+      self.all_targets.append(cxx)
+
+SH = SafetyHook()
+SH.configure()
+
+builder.Build(os.path.join('safetyhook', 'AMBuilder'), { 'SafetyHook': SH })
 
 # smsdk_ext.cpp will be automatically added later
 sourceFiles = [
   'extension.cpp',
-  'patch.cpp',
 ]
 
-###############
-# Make sure to edit PackageScript, which copies your files to their appropriate locations
-# Simple extensions do not need to modify past this point.
-
-project = Extension.HL2Project(builder, projectName + '.ext')
+project = builder.LibraryProject(projectName)
 
 if os.path.isfile(os.path.join(builder.currentSourcePath, 'sdk', 'smsdk_ext.cpp')):
   # Use the copy included in the project
@@ -24,33 +46,29 @@ else:
 
 project.sources += sourceFiles
 
-project.sources += [
-  os.path.join(Extension.sm_root, 'public', 'CDetour', 'detours.cpp'),
-  os.path.join(Extension.sm_root, 'public', 'asm', 'asm.c'),
-  os.path.join(Extension.sm_root, 'public', 'libudis86', 'decode.c'),
-  os.path.join(Extension.sm_root, 'public', 'libudis86', 'itab.c'),
-  os.path.join(Extension.sm_root, 'public', 'libudis86', 'syn-att.c'),
-  os.path.join(Extension.sm_root, 'public', 'libudis86', 'syn-intel.c'),
-  os.path.join(Extension.sm_root, 'public', 'libudis86', 'syn.c'),
-  os.path.join(Extension.sm_root, 'public', 'libudis86', 'udis86.c'),
-]
-  
 for sdk_name in Extension.sdks:
   sdk = Extension.sdks[sdk_name]
-  
-  binary = Extension.HL2Config(project, projectName + '.ext.' + sdk.ext, sdk)
-  compiler = binary.compiler
+  if sdk['name'] in ['mock']:
+    continue
 
-  if compiler.like('gcc'):
-    compiler.cxxflags += ['-Wno-class-memaccess']
-    compiler.cflags += ['-fno-omit-frame-pointer'] # don't omit frame-pointer
-  elif compiler.vendor == 'msvc':
-    compiler.cflags += ['/Oy-'] # don't omit frame-pointer
+  for cxx in builder.targets:
+    if not cxx.target.arch in sdk['platforms'][cxx.target.platform]:
+      continue
 
-  compiler.cxxincludes += [
-    os.path.join(Extension.sm_root, 'sourcepawn', 'include'),
-    os.path.join(Extension.sm_root, 'sourcepawn', 'vm'),
-    os.path.join(Extension.sm_root, 'sourcepawn', 'vm', 'x86'),
-  ]
+    binary = Extension.HL2ExtConfig(project, builder, cxx, projectName + '.ext.' + sdk['extension'], sdk)
 
-Extension.extensions = builder.Add(project)
+    if binary.compiler.vendor == 'msvc':
+      binary.compiler.cflags += ['/Oy-'] # don't omit frame-pointer
+    else:
+      binary.compiler.cflags += ['-fno-omit-frame-pointer'] # don't omit frame-pointer
+      binary.compiler.cxxflags += ['-Wno-unknown-pragmas', '-Wno-dangling-else']
+
+    binary.compiler.cxxincludes += [
+      os.path.join(builder.sourcePath, 'safetyhook', 'include'),
+    ]
+
+    for task in SH.libsafetyhook:
+      if task.target.arch == binary.compiler.target.arch:
+        binary.compiler.linkflags += [task.binary]
+
+Extension.extensions += builder.Add(project)
