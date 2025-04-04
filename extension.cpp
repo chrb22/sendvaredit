@@ -402,7 +402,7 @@ cell_t smn_SendVarVectorXY(IPluginContext* pContext, const cell_t* params)
     return CreateSendVarHandle(pContext, var);
 }
 
-// Handle SendVarString(const const char[] string)
+// Handle SendVarString(const char[] string)
 cell_t smn_SendVarString(IPluginContext* pContext, const cell_t* params)
 {
     char* sp_string;
@@ -471,8 +471,8 @@ bool FindClassSendPropInfo(ServerClass* serverclass, const char* propname, SendP
     if (!sendtableinfo->lookup.retrieve(propname, info)) {
         CSendTablePrecalc* precalc = serverclass->m_pTable->m_pPrecalc;
 
-        int propcount = *(int*)((char*)precalc + g_gameinfo.struct_STP.propcount);
-        SendProp** props = *(SendProp***)((char*)precalc + g_gameinfo.struct_STP.props);
+        int propcount = *(int*)((uint8_t*)precalc + g_gameinfo.struct_STP.propcount);
+        SendProp** props = *(SendProp***)((uint8_t*)precalc + g_gameinfo.struct_STP.props);
 
         SendProp** prop = std::find_if(props, props + propcount, [propname](SendProp* prop) { return strcmp(prop->GetName(), propname) == 0; });
 
@@ -713,13 +713,13 @@ EditEntry* DiscoverEntry(int entity)
         void* eip = ebp_walk[1];
         ebp_walk = (void**)ebp_walk[0];
 
-        if (g_gameinfo.span_WDE.start <= eip && eip < (char*)g_gameinfo.span_WDE.start + g_gameinfo.span_WDE.size)
+        if (g_gameinfo.span_WDE.start <= eip && eip < (uint8_t*)g_gameinfo.span_WDE.start + g_gameinfo.span_WDE.size)
             break;
     }
 
     // extract client index from CBaseClient
-    void* baseclient = *(void**)((char*)ebp_walk + g_gameinfo.stack_WDE.client);
-    int client = *(int*)((char*)baseclient + 16);
+    void* baseclient = *(void**)((uint8_t*)ebp_walk + g_gameinfo.stack_WDE.client);
+    int client = *(int*)((uint8_t*)baseclient + 16);
 
     // check if edit list can be indexed with client. it should, but who knows.
     if (client < 0 || client >= 256)
@@ -846,7 +846,7 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
         return;
 
     SendTable* table = context.stack<SendTable*>(g_gameinfo.stack_WPL.table);
-    SendProp** props = *(SendProp***)((char*)table->m_pPrecalc + g_gameinfo.struct_STP.props);
+    SendProp** props = *(SendProp***)((uint8_t*)table->m_pPrecalc + g_gameinfo.struct_STP.props);
 
     int propindex = g_gameinfo.propindex_WPL.read == -1 ? context.reg(g_gameinfo.propindex_WPL.reg) : context.read<int>(g_gameinfo.propindex_WPL.reg, g_gameinfo.propindex_WPL.read);
     SendProp* prop = props[propindex];
