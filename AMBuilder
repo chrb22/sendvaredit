@@ -57,7 +57,7 @@ for sdk_name in Extension.sdks:
 
     binary = Extension.HL2ExtConfig(project, builder, cxx, projectName + '.ext.' + sdk['extension'], sdk)
 
-    if binary.compiler.vendor == 'msvc':
+    if binary.compiler.like('msvc'):
       binary.compiler.cflags += ['/Oy-'] # don't omit frame-pointer
     else:
       binary.compiler.cflags += ['-fno-omit-frame-pointer'] # don't omit frame-pointer
