@@ -1,5 +1,5 @@
 # SendVarEdit
-A SourceMod extension that allows you to manipulate the sent values of networkable entity properties for individual clients even while `sv_parallel_sendsnapshot` is enabled. The extension works by detouring `SendTable_WritePropList` where packed entity data is normally selectively copied to the client's buffer. Here it can write custom values into the buffer or prevent props from getting copied. Incompatible with the debug ConVars `dtwatchent` and `dtwatchclass`.
+A SourceMod extension that allows you to manipulate the sent values of networkable entity properties for individual clients even while `sv_parallel_sendsnapshot` is enabled. The extension works by detouring `SendTable_WritePropList` where packed entity data is normally selectively copied to the client's buffer. Here it can write custom values into the buffer or prevent props from getting copied.
 
 ## Installing
 Extract/copy the files into the game folder.

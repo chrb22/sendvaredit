@@ -43,12 +43,6 @@
                 "windows"   "0x14"
             }
 
-            "SendTable_WritePropList ebp entity"
-            {
-                "linux"     "0x18"
-                "windows"   "0x18"
-            }
-
             "SendTable_WritePropList ebp input"
             {
                 "linux"     "-0x30"

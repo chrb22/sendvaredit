@@ -160,7 +160,6 @@ struct Stack_SendTable_WritePropList
 {
     int table; // SendTable*
     int output; // bf_write*
-    int entity; // int
     int input; // bf_read
     int output_lastpropindex; // int
     int input_lastpropindex; // int
@@ -728,14 +727,19 @@ EditEntry* DiscoverEntry(int entity)
     return list->GetEntry(client);
 }
 
+// store entry address at the very end of the output buffer
+EditEntry** GetHookEntryAddress(bf_write* output)
+{
+    uintptr_t address = (uintptr_t)output->m_pData + output->m_nDataBytes - sizeof(EditEntry*);
+    return (EditEntry**)address;
+}
+
 safetyhook::InlineHook g_Hook_SendTable_WritePropList{};
 void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inputlength, bf_write* output, int entity, int* propindexlist, int propindexlistlength)
 {
     EditEntry* entry = DiscoverEntry(entity);
 
-    // this argument isn't used by SendTable_WritePropList other than in the debug section enabled with `g_CV_DTWatchEnt` or `g_CV_DTWatchClass`,
-    // so it can be used to store information on the stack
-    entity = (int)entry;
+    *GetHookEntryAddress(output) = entry;
 
     if (!entry) {
         // normal call
@@ -839,9 +843,8 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
 {
     ContextUtil context(registers);
 
-    // get saved entry pointer (see comment in SendTable_WritePropList detour)
-    // if there isn't an edit entry, then let the code run normally
-    const EditEntry* entry = context.stack<EditEntry*>(g_gameinfo.stack_WPL.entity);
+    bf_write* output = context.stack<bf_write*>(g_gameinfo.stack_WPL.output);
+    const EditEntry* entry = *GetHookEntryAddress(output);
     if (!entry)
         return;
 
@@ -873,7 +876,6 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     // smutils->LogMessage(myself, "edit: entry = %d, %s", info->propindex, string);
 
     bf_read* input = &context.stack<bf_read>(g_gameinfo.stack_WPL.input);
-    bf_write* output = context.stack<bf_write*>(g_gameinfo.stack_WPL.output);
 
     // follow procedure of the SendTable_WritePropList loop, but encode instead of copy
 
@@ -966,7 +968,6 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
 
         gameconf->GetOffset("SendTable_WritePropList ebp table", &g_gameinfo.stack_WPL.table);
         gameconf->GetOffset("SendTable_WritePropList ebp output", &g_gameinfo.stack_WPL.output);
-        gameconf->GetOffset("SendTable_WritePropList ebp entity", &g_gameinfo.stack_WPL.entity);
         gameconf->GetOffset("SendTable_WritePropList ebp input", &g_gameinfo.stack_WPL.input);
         gameconf->GetOffset("SendTable_WritePropList ebp output_lastpropindex", &g_gameinfo.stack_WPL.output_lastpropindex);
         gameconf->GetOffset("SendTable_WritePropList ebp input_lastpropindex", &g_gameinfo.stack_WPL.input_lastpropindex);
