@@ -38,6 +38,7 @@
 
 #include <string>
 #include <cstddef>
+#include <map>
 
 #include <sm_namehashset.h>
 
@@ -145,6 +146,406 @@ std::vector<EditList> g_editlists;
 
 int g_editindices[MAX_EDICTS] = {-1};
 
+
+
+
+
+struct RegisterInfo { const char* name;  uint8_t offset; };
+#define REG_INFO(NAME) { #NAME, (uint8_t)offsetof(safetyhook::Context, NAME) }
+RegisterInfo g_registers[] {
+#ifdef _x86_64
+    REG_INFO(xmm0),
+    REG_INFO(xmm1),
+    REG_INFO(xmm2),
+    REG_INFO(xmm3),
+    REG_INFO(xmm4),
+    REG_INFO(xmm5),
+    REG_INFO(xmm6),
+    REG_INFO(xmm7),
+    REG_INFO(xmm8),
+    REG_INFO(xmm9),
+    REG_INFO(xmm10),
+    REG_INFO(xmm11),
+    REG_INFO(xmm12),
+    REG_INFO(xmm13),
+    REG_INFO(xmm14),
+    REG_INFO(xmm15),
+    REG_INFO(rflags),
+    REG_INFO(r15),
+    REG_INFO(r14),
+    REG_INFO(r13),
+    REG_INFO(r12),
+    REG_INFO(r11),
+    REG_INFO(r10),
+    REG_INFO(r9),
+    REG_INFO(r8),
+    REG_INFO(rdi),
+    REG_INFO(rsi),
+    REG_INFO(rdx),
+    REG_INFO(rcx),
+    REG_INFO(rbx),
+    REG_INFO(rax),
+    REG_INFO(rbp),
+    REG_INFO(rsp),
+    REG_INFO(trampoline_rsp),
+    REG_INFO(rip),
+#else
+    REG_INFO(xmm0),
+    REG_INFO(xmm1),
+    REG_INFO(xmm2),
+    REG_INFO(xmm3),
+    REG_INFO(xmm4),
+    REG_INFO(xmm5),
+    REG_INFO(xmm6),
+    REG_INFO(xmm7),
+    REG_INFO(eflags),
+    REG_INFO(edi),
+    REG_INFO(esi),
+    REG_INFO(edx),
+    REG_INFO(ecx),
+    REG_INFO(ebx),
+    REG_INFO(eax),
+    REG_INFO(ebp),
+    REG_INFO(esp),
+    REG_INFO(trampoline_esp),
+    REG_INFO(eip),
+#endif
+};
+
+const RegisterInfo* FindRegister(const char* name)
+{
+    auto register_propindex = std::find_if(
+        std::begin(g_registers),
+        std::end(g_registers),
+        [name](const RegisterInfo &info) { return strcmp(info.name, name) == 0; }
+    );
+
+    return register_propindex != std::end(g_registers) ? register_propindex : nullptr;
+}
+
+struct VariableInfo
+{
+    bool is_register;
+    bool is_read;
+};
+
+template <typename T>
+struct Variable
+{
+    VariableInfo info;
+    int32_t offset;
+    int32_t read;
+};
+
+class ContextWrapper
+{
+public:
+    safetyhook::Context &registers;
+
+public:
+    ContextWrapper(safetyhook::Context &context)
+        : registers(context)
+    {}
+
+    template<typename T>
+    static inline T& read(void* address, uint32_t offset)
+    {
+        return *(T*)((uintptr_t)address + offset);
+    }
+
+    template<typename T>
+    inline T& reg(size_t reg) { return *(T*)((uint8_t*)&registers + reg); }
+
+    template<typename T>
+    inline T& stack(int32_t offset)
+    {
+#ifdef _x86_64
+        return *(T*)(registers.rbp + offset);
+#else
+        return *(T*)(registers.ebp + offset);
+#endif
+    }
+
+    inline uintptr_t bp()
+    {
+#ifdef _x86_64
+        return registers.rbp;
+#else
+        return registers.ebp;
+#endif
+    }
+
+    inline void*& ip()
+    {
+#ifdef _x86_64
+        return *(void**)&registers.rip;
+#else
+        return *(void**)&registers.eip;
+#endif
+    }
+
+    inline uintptr_t& flags()
+    {
+#ifdef _x86_64
+        return registers.rflags;
+#else
+        return registers.eflags;
+#endif
+    }
+
+    template<typename T>
+    inline T& var(Variable<T> &var)
+    {
+        void* base = var.info.is_register ? &registers : (void*)bp();
+        T &value = *(T*)((uintptr_t)base + var.offset);
+
+        if (var.info.is_read)
+            value = read<T>((void*)&value, var.offset);
+
+        return value;
+    }
+};
+
+#ifdef _x86_64
+#if defined WIN32
+#define _PLATFORM "windows64"
+#elif defined _LINUX
+#define _PLATFORM "linux64"
+#elif defined _OSX
+#define _PLATFORM "mac64"
+#endif
+#else
+#if defined WIN32
+#define _PLATFORM "windows"
+#elif defined _LINUX
+#define _PLATFORM "linux"
+#elif defined _OSX
+#define _PLATFORM "mac"
+#endif
+#endif
+
+class VariableReader : public ITextListener_SMC
+{
+private:
+    int ignore_level;
+
+    std::pair<const std::string, Variable<void>>* current;
+    int current_level;
+    bool current_assigned;
+    bool current_read;
+
+private:
+    std::map<std::string, Variable<void>, std::less<>> variables;
+
+private:
+    bool IsPlatform(const char* string, bool* current_platform, bool* other_platform)
+    {
+        *current_platform = strcmp(string, _PLATFORM) == 0;
+        *other_platform = !*current_platform;
+        if (
+            strcmp(string, "linux") != 0 && strcmp(string, "linux64") != 0 &&
+            strcmp(string, "windows") != 0 && strcmp(string, "windows64") != 0 &&
+            strcmp(string, "mac") != 0 && strcmp(string, "mac64") != 0
+        ) {
+            *other_platform = false;
+        }
+
+        return *current_platform || *other_platform;
+    }
+
+    bool ParseInt(const char* string, int32_t* value)
+    {
+        char* end = nullptr;
+        intptr_t parsed = std::strtoll(string, &end, 0);
+        if (errno == ERANGE || !(INT32_MIN <= parsed && parsed <= INT32_MAX) || string + strlen(string) != end)
+            return false;
+
+        *value = static_cast<int32_t>(parsed);
+        return true;
+    }
+
+    bool ParseRead(const char* string, Variable<void>* variable)
+    {
+        if (!ParseInt(string, &variable->read))
+            return false;
+
+        variable->info.is_read = true;
+
+        return true;
+    }
+
+    bool ParseStack(const char* string, Variable<void>* variable)
+    {
+        if (!ParseInt(string, &variable->offset))
+            return false;
+
+        variable->info.is_register = false;
+
+        return true;
+    }
+
+    bool ParseRegister(const char* string, Variable<void>* variable)
+    {
+        const RegisterInfo* reg = FindRegister(string);
+        if (!reg)
+            return false;
+
+        variable->info.is_register = true;
+        variable->offset = reg->offset;
+
+        return true;
+    }
+
+public:
+    virtual void ReadSMC_ParseStart() override
+    {
+        ignore_level = 0;
+
+        current = nullptr;
+        current_level = 0;
+        current_assigned = false;
+        current_read = false;
+    };
+
+    virtual void ReadSMC_ParseEnd(bool halted, bool failed) override
+    {
+        if ((halted || failed) && current)
+            variables.erase(current->first);
+
+        ignore_level = 0;
+
+        current = nullptr;
+        current_level = 0;
+        current_assigned = false;
+        current_read = false;
+    }
+
+    virtual SMCResult ReadSMC_NewSection(const SMCStates *states, const char *name) override
+    {
+        bool current_platform, other_platform;
+        IsPlatform(name, &current_platform, &other_platform);
+
+        // skip over other platforms
+        if (ignore_level || other_platform) {
+            ignore_level++;
+            return SMCResult_Continue;
+        }
+
+        if (current)
+            current_level++;
+
+        // go into current platform
+        if (current_platform)
+            return SMCResult_Continue;
+
+        // can't start a new variable when one is already gettig parsed
+        if (current)
+            return SMCResult_HaltFail;
+
+        // start new variable
+        auto assignment = variables.insert_or_assign(name, Variable<void>{});
+        current = &*assignment.first;
+        current_level++;
+
+        return SMCResult_Continue;
+    }
+
+    virtual SMCResult ReadSMC_LeavingSection(const SMCStates *states) override
+    {
+        // inside skipped platform
+        if (ignore_level) {
+            ignore_level--;
+            return SMCResult_Continue;
+        }
+
+        if (current)
+            current_level--;
+
+        // continue if there is no current variable or is still parsing one
+        if (!current || current_level)
+            return SMCResult_Continue;
+
+        // finished parsing a variable
+
+        // fail if variable wasn't assigned a register or stack offset
+        if (!current_assigned)
+            return SMCResult_HaltFail;
+
+        current = nullptr;
+        current_assigned = false;
+        current_read = false;
+
+        return SMCResult_Continue;
+    }
+
+    virtual SMCResult ReadSMC_KeyValue(const SMCStates *states, const char *key, const char *value) override
+    {
+        // inside skipped platform
+        if (ignore_level)
+            return SMCResult_Continue;
+
+        // parse read offset
+        if (strcmp(key, "read") == 0) {
+            if (current_read)
+                return SMCResult_HaltFail;
+
+            if (!ParseRead(value, &current->second))
+                return SMCResult_HaltFail;
+
+            current_read = true;
+            return SMCResult_Continue;
+        }
+
+        // check for a platform specifier key
+        bool current_platform, other_platform;
+        if (value && IsPlatform(key, &current_platform, &other_platform)) {
+            if (other_platform)
+                return SMCResult_Continue;
+
+            // stack and register are parsed with key variable
+            key = value;
+            value = nullptr;
+        }
+        else {
+            return SMCResult_HaltFail;
+        }
+
+        if (current_assigned)
+            return SMCResult_HaltFail;
+
+        // try to parse stack offset
+        if (ParseStack(key, &current->second)) {
+            current_assigned = true;
+            return SMCResult_Continue;
+        }
+
+        // try to parse register name
+        if (ParseRegister(key, &current->second)) {
+            current_assigned = true;
+            return SMCResult_Continue;
+        }
+
+        return SMCResult_HaltFail;
+    }
+
+public:
+    template<typename T>
+    bool GetVariable(const char* name, Variable<T>* variable)
+    {
+        auto search = variables.find(name);
+        if (search == variables.end())
+            return false;
+
+        *variable = *(Variable<T>*)&search->second;
+
+        return true;
+    }
+
+    std::map<std::string, Variable<void>, std::less<>>::const_iterator begin() const { return variables.begin(); }
+    std::map<std::string, Variable<void>, std::less<>>::const_iterator end() const { return variables.end(); }
+};
+VariableReader g_variables;
+
 struct FunctionSpan
 {
     void* start;
@@ -156,20 +557,12 @@ struct Stack_CGameServer__WriteDeltaEntities
     int client;
 };
 
-struct Stack_SendTable_WritePropList
+struct Variables_SendTable_WritePropList
 {
-    int table; // SendTable*
-    int output; // bf_write*
-    int input; // bf_read
-    int output_lastpropindex; // int
-    int input_lastpropindex; // int
-    int prop; // SendProp*
-};
-
-struct PropIndex_SendTable_WritePropList
-{
-    size_t reg;
-    int32_t read; // if not -1, treat register as a pointer and read at this offset
+    Variable<SendTable*> table;
+    Variable<bf_write*> output;
+    Variable<int> propindex;
+    Variable<int> output_lastpropindex;
 };
 
 struct Point_SendTable_WritePropList
@@ -195,41 +588,13 @@ struct GameInfo
     FunctionSpan span_WDE;
     Stack_CGameServer__WriteDeltaEntities stack_WDE;
 
-    Stack_SendTable_WritePropList stack_WPL;
-    PropIndex_SendTable_WritePropList propindex_WPL;
+    Variables_SendTable_WritePropList vars_WPL;
     Point_SendTable_WritePropList point_WPL;
 
     PropTypeFns* proptypefns;
     Struct_CSendTablePrecalc struct_STP;
 };
 GameInfo g_gameinfo;
-
-struct RegisterInfo { const char* name;  size_t offset; };
-#define REG_INFO(NAME) { #NAME, offsetof(safetyhook::Context, NAME) }
-RegisterInfo g_registers[] {
-    REG_INFO(eflags),
-    REG_INFO(edi),
-    REG_INFO(esi),
-    REG_INFO(edx),
-    REG_INFO(ecx),
-    REG_INFO(ebx),
-    REG_INFO(eax),
-    REG_INFO(ebp),
-    REG_INFO(esp),
-    REG_INFO(trampoline_esp),
-    REG_INFO(eip),
-};
-
-const RegisterInfo* FindRegister(const char* name)
-{
-    auto register_propindex = std::find_if(
-        std::begin(g_registers),
-        std::end(g_registers),
-        [name](const RegisterInfo &info) { return strcmp(info.name, name) == 0; }
-    );
-
-    return register_propindex != std::end(g_registers) ? register_propindex : nullptr;
-}
 
 
 
@@ -806,52 +1171,21 @@ void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inp
     return g_Hook_SendTable_WritePropList.unsafe_call(sendtable, inputdata, inputlength, output, entity, propindexlist, propindexlistlength);
 }
 
-class ContextUtil
-{
-public:
-    safetyhook::Context &registers;
-
-public:
-    ContextUtil(safetyhook::Context &context)
-        : registers(context)
-    {}
-
-    inline uintptr_t& reg(size_t reg) { return *(uintptr_t*)((uint8_t*)&registers + reg); }
-    inline safetyhook::Xmm& xmm(size_t reg) { return *(safetyhook::Xmm*)((uint8_t*)&registers + reg); }
-
-    inline void*& ip()
-    {
-        return *(void**)&registers.eip;
-    }
-
-    template<typename T>
-    inline T& read(size_t reg, int32_t offset=0)
-    {
-        return *(T*)(this->reg(reg) + offset);
-    }
-
-    template<typename T>
-    inline T& stack(int32_t offset)
-    {
-        return *(T*)(registers.ebp + offset);
-    }
-};
-
 // does the same thing as SendTable_WritePropList, but instead of copying from the input buffer it encodes the given DVariant
 safetyhook::MidHook g_MidHook_SendTable_WritePropList_BreakCondition{};
 void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registers)
 {
-    ContextUtil context(registers);
+    ContextWrapper context(registers);
 
-    bf_write* output = context.stack<bf_write*>(g_gameinfo.stack_WPL.output);
+    bf_write* output = context.var(g_gameinfo.vars_WPL.output);
     const EditEntry* entry = *GetHookEntryAddress(output);
     if (!entry)
         return;
 
-    SendTable* table = context.stack<SendTable*>(g_gameinfo.stack_WPL.table);
+    SendTable* table = context.var(g_gameinfo.vars_WPL.table);
     SendProp** props = *(SendProp***)((uint8_t*)table->m_pPrecalc + g_gameinfo.struct_STP.props);
 
-    int propindex = g_gameinfo.propindex_WPL.read == -1 ? context.reg(g_gameinfo.propindex_WPL.reg) : context.read<int>(g_gameinfo.propindex_WPL.reg, g_gameinfo.propindex_WPL.read);
+    int propindex = context.var(g_gameinfo.vars_WPL.propindex);
     SendProp* prop = props[propindex];
 
     // no support for arrays and data tables (sent as multiple seperate props i think)
@@ -875,13 +1209,11 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     // const char* string = ((DVariant*)(info->var))->ToString();
     // smutils->LogMessage(myself, "edit: entry = %d, %s", info->propindex, string);
 
-    bf_read* input = &context.stack<bf_read>(g_gameinfo.stack_WPL.input);
-
     // follow procedure of the SendTable_WritePropList loop, but encode instead of copy
 
     // write prop index delta and update variable keeping track of the last output propindex
     {
-        int* output_lastpropindex = &context.stack<int>(g_gameinfo.stack_WPL.output_lastpropindex);
+        int* output_lastpropindex = &context.var(g_gameinfo.vars_WPL.output_lastpropindex);
 
         int diff = propindex - *output_lastpropindex;
         *output_lastpropindex = propindex;
@@ -954,6 +1286,9 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
     std::fill(g_editindices, g_editindices + MAX_EDICTS, -1);
 
+    // get info about what stack offsets and registers
+    gameconfs->AddUserConfigHook("Variables", &g_variables);
+
     IGameConfig* gameconf;
     if (!gameconfs->LoadGameConfigFile("sendvaredit", &gameconf, error, maxlength))
         return false;
@@ -964,28 +1299,12 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
             RETURN_ERROR("Failed to find CBaseServer::WriteDeltaEntities.");
         gameconf->GetOffset("CBaseServer::WriteDeltaEntities size", &g_gameinfo.span_WDE.size);
 
-        gameconf->GetOffset("CBaseServer::WriteDeltaEntities ebp client", &g_gameinfo.stack_WDE.client);
+        gameconf->GetOffset("CBaseServer::WriteDeltaEntities bp client", &g_gameinfo.stack_WDE.client);
 
-        gameconf->GetOffset("SendTable_WritePropList ebp table", &g_gameinfo.stack_WPL.table);
-        gameconf->GetOffset("SendTable_WritePropList ebp output", &g_gameinfo.stack_WPL.output);
-        gameconf->GetOffset("SendTable_WritePropList ebp input", &g_gameinfo.stack_WPL.input);
-        gameconf->GetOffset("SendTable_WritePropList ebp output_lastpropindex", &g_gameinfo.stack_WPL.output_lastpropindex);
-        gameconf->GetOffset("SendTable_WritePropList ebp input_lastpropindex", &g_gameinfo.stack_WPL.input_lastpropindex);
-        gameconf->GetOffset("SendTable_WritePropList ebp prop", &g_gameinfo.stack_WPL.prop);
-
-        const char* register_propindex_string = gameconf->GetKeyValue("SendTable_WritePropList register propindex");
-        if (!register_propindex_string)
-            RETURN_ERROR("Failed to get SendTable_WritePropList propindex register name.");
-
-        const RegisterInfo* register_propindex = FindRegister(register_propindex_string);
-        if (!register_propindex)
-            RETURN_ERROR("Failed to match SendTable_WritePropList propindex register name.");
-
-        g_gameinfo.propindex_WPL.reg = register_propindex->offset;
-
-        int32_t read_propindex = -1;
-        gameconf->GetOffset("SendTable_WritePropList read propindex", &read_propindex);
-        g_gameinfo.propindex_WPL.read = read_propindex;
+        g_variables.GetVariable("SendTable_WritePropList table", &g_gameinfo.vars_WPL.table);
+        g_variables.GetVariable("SendTable_WritePropList output", &g_gameinfo.vars_WPL.output);
+        g_variables.GetVariable("SendTable_WritePropList propindex", &g_gameinfo.vars_WPL.propindex);
+        g_variables.GetVariable("SendTable_WritePropList output_lastpropindex", &g_gameinfo.vars_WPL.output_lastpropindex);
 
         if (!gameconf->GetAddress("SendTable_WritePropList loop continue", &g_gameinfo.point_WPL.loop_continue))
             RETURN_ERROR("Failed to find SendTable_WritePropList loop continuation point.");
@@ -1088,4 +1407,6 @@ void SendVarEdit::SDK_OnUnload()
 
     if (g_Hook_CGameServer__SendClientMessages.enabled())
         g_Hook_CGameServer__SendClientMessages = {};
+
+    gameconfs->RemoveUserConfigHook("Variables", &g_variables);
 }

@@ -2,69 +2,18 @@
 {
     "#default"
     {
-        "Keys"
-        {
-            // the other value in the comparison right after the break condition
-            "SendTable_WritePropList register propindex"
-            {
-                "linux"     "esi"
-                "windows"   "eax"
-            }
-        }
-
         "Offsets"
         {
-            "SendTable_WritePropList read propindex"
-            {
-                // no OS needs this currently
-            }
-
             "CBaseServer::WriteDeltaEntities size"
             {
                 "linux"     "0x17cf"
                 "windows"   "0x7df"
             }
 
-            "CBaseServer::WriteDeltaEntities ebp client"
+            "CBaseServer::WriteDeltaEntities bp client"
             {
                 "linux"     "0xc"
                 "windows"   "0x8"
-            }
-
-            "SendTable_WritePropList ebp table"
-            {
-                "linux"     "0x8"
-                "windows"   "0x8"
-            }
-
-            "SendTable_WritePropList ebp output"
-            {
-                "linux"     "0x14"
-                "windows"   "0x14"
-            }
-
-            "SendTable_WritePropList ebp input"
-            {
-                "linux"     "-0x30"
-                "windows"   "-0x1c"
-            }
-
-            "SendTable_WritePropList ebp output_lastpropindex"
-            {
-                "linux"     "-0x48"
-                "windows"   "-0x3c"
-            }
-
-            "SendTable_WritePropList ebp input_lastpropindex"
-            {
-                "linux"     "-0x40"
-                "windows"   "-0x28"
-            }
-
-            "SendTable_WritePropList ebp prop"
-            {
-                "linux"     "-0x4c"
-                "windows"   "-0x2c"
             }
 
             "CSendTablePrecalc props"
@@ -77,6 +26,34 @@
             {
                 "linux"     "0x38"
                 "windows"   "0x38"
+            }
+        }
+
+        "Variables"
+        {
+            "SendTable_WritePropList table"
+            {
+                "linux"     "0x8"
+                "windows"   "0x8"
+            }
+
+            "SendTable_WritePropList output"
+            {
+                "linux"     "0x14"
+                "windows"   "0x14"
+            }
+
+            // the other value in the comparison right after the break condition
+            "SendTable_WritePropList propindex"
+            {
+                "linux"     "esi"
+                "windows"   "eax"
+            }
+
+            "SendTable_WritePropList output_lastpropindex"
+            {
+                "linux"     "-0x48"
+                "windows"   "-0x3c"
             }
         }
 
