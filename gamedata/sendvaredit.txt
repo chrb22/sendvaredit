@@ -16,6 +16,36 @@
                 "windows"   "0x8"
             }
 
+            "CEntityWriteInfo entity"
+            {
+                "linux"     "0x18"
+                "windows"   "0x18"
+            }
+
+            "CEntityWriteInfo output"
+            {
+                "linux"     "0x24"
+                "windows"   "0x24"
+            }
+
+            "CEntityWriteInfo client"
+            {
+                "linux"     "0x28"
+                "windows"   "0x28"
+            }
+
+            "CEntityWriteInfo oldpack"
+            {
+                "linux"     "0x2c"
+                "windows"   "0x2c"
+            }
+
+            "CEntityWriteInfo newpack"
+            {
+                "linux"     "0x30"
+                "windows"   "0x30"
+            }
+
             "CSendTablePrecalc props"
             {
                 "linux"     "0x2c"
@@ -31,6 +61,18 @@
 
         "Variables"
         {
+            "SV_DetermineUpdateType entitywriteinfo"
+            {
+                "linux"     "ebx"
+                "windows"   "0x8"
+            }
+
+            "SV_DetermineUpdateType propcount"
+            {
+                "linux"     "esi"
+                "windows"   "edi"
+            }
+
             "SendTable_WritePropList table"
             {
                 "linux"     "0x8"
@@ -67,12 +109,49 @@
                 // 55 8B EC 81 EC 34 04 00 00 53 56 8B F1
             }
 
-            "CBaseServer::WriteDeltaEntities"
+            "SV_DetermineUpdateType start"
             {
                 "library"   "engine"
-                "linux"     "@_ZN11CBaseServer18WriteDeltaEntitiesEP11CBaseClientP12CClientFrameS3_R8bf_write"
-                "windows"   "\x55\x8B\xEC\x81\xEC\x98\x01\x00\x00"
-                // 55 8B EC 81 EC 98 01 00 00
+                "linux"     "\x8B\x40\x2A\x3B\x43\x2A"
+                // 8B 40 ? 3B 43 ?
+                "windows"   "\x8B\x75\x2A\x8B\x56\x2A\x3B\x56\x2A\x7D\x2A\xB8\x10\x00\x00\x00"
+                // 8B 75 ? 8B 56 ? 3B 56 ? 7D ? B8 10 00 00 00
+            }
+
+            "SV_DetermineUpdateType pack equality check"
+            {
+                "library"   "engine"
+                "linux"     "\x39\x4B\x2A\x74\x2A\x80\xBB\x2A\x2A\x2A\x2A\x00"
+                // 39 4B ? 74 ? 80 BB ? ? ? ? 00
+                "windows"   "\x3B\x46\x2A\x0F\x84\x2A\x2A\x2A\x2A\x80\xBE\x2A\x2A\x2A\x2A\x00"
+                // 3B 46 ? 0F 84 ? ? ? ? 80 BE ? ? ? ? 00
+            }
+
+            "SV_DetermineUpdateType props changed call"
+            {
+                "library"   "engine"
+                "linux"     "\x8D\xBD\x2A\x2A\x2A\x2A\x68\x00\x10\x00\x00\x57\xFF\x72\x2A"
+                // 8D BD ? ? ? ? 68 00 10 00 00 57 FF 72 ?
+                "windows"   "\x8B\x4E\x2A\x8D\x85\x2A\x2A\x2A\x2A\x68\x00\x10\x00\x00"
+                // 8B 4E ? 8D 85 ? ? ? ? 68 00 10 00 00
+            }
+
+            "SV_DetermineUpdateType positive propcount check"
+            {
+                "library"   "engine"
+                "linux"     "\x85\xF6\x7F\x2A\x80\xBB\x2A\x2A\x2A\x2A\x00"
+                // 85 F6 7F ? 80 BB ? ? ? ? 00
+                "windows"   "\x85\xFF\x7E\x2A\x6A\x00"
+                // 85 FF 7E ? 6A 00
+            }
+
+            "SV_DetermineUpdateType positive propcount block"
+            {
+                "library"   "engine"
+                "linux"     "\x8B\x53\x2A\x31\xC9\x89\xD8\xE8\x2A\x2A\x2A\x2A\x8B\x43\x2A"
+                // 8B 53 ? 31 C9 89 D8 E8 ? ? ? ? 8B 43 ?
+                "windows"   "\x6A\x00\xFF\x76\x2A\x56\xE8\x2A\x2A\x2A\x2A\x57"
+                // 6A 00 FF 76 ? 56 E8 ? ? ? ? 57
             }
 
             "SendTable_WritePropList"
@@ -118,6 +197,31 @@
 
         "Addresses"
         {
+            "SV_DetermineUpdateType start"
+            {
+                "signature" "SV_DetermineUpdateType start"
+            }
+
+            "SV_DetermineUpdateType pack equality check"
+            {
+                "signature" "SV_DetermineUpdateType pack equality check"
+            }
+
+            "SV_DetermineUpdateType props changed call"
+            {
+                "signature" "SV_DetermineUpdateType props changed call"
+            }
+
+            "SV_DetermineUpdateType positive propcount check"
+            {
+                "signature" "SV_DetermineUpdateType positive propcount check"
+            }
+
+            "SV_DetermineUpdateType positive propcount block"
+            {
+                "signature" "SV_DetermineUpdateType positive propcount block"
+            }
+
             "SendTable_WritePropList loop break condition"
             {
                 "signature" "SendTable_WritePropList loop break condition"

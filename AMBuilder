@@ -60,10 +60,7 @@ for sdk_name in Extension.sdks:
     if binary.compiler.target.arch == 'x86_64':
       binary.compiler.defines += ['_x86_64']
 
-    if binary.compiler.like('msvc'):
-      binary.compiler.cflags += ['/Oy-'] # don't omit frame-pointer
-    else:
-      binary.compiler.cflags += ['-fno-omit-frame-pointer'] # don't omit frame-pointer
+    if not binary.compiler.like('msvc'):
       binary.compiler.cxxflags += ['-Wno-unknown-pragmas', '-Wno-dangling-else']
 
     binary.compiler.cxxincludes += [

@@ -105,11 +105,13 @@ public:
         : entity(entity), client(client)
     {
         edits.reserve(8);
+        has_setter = false;
     }
 
     int entity;
     int client;
     std::vector<EditInfo> edits;
+    bool has_setter;
 };
 
 class EditList {
@@ -546,15 +548,28 @@ public:
 };
 VariableReader g_variables;
 
-struct FunctionSpan
+struct PackedEntity;
+struct CEntityWriteInfo;
+
+struct Struct_CEntityWriteInfo
 {
-    void* start;
-    int size;
+    int entity; // int
+    int output; // bf_write*
+    int client; // int
+    int oldpack; // PackedEntity*
+    int newpack; // PackedEntity*
 };
 
-struct Stack_CGameServer__WriteDeltaEntities
+struct Variables_SV_DetermineUpdateType
 {
-    int client;
+    Variable<CEntityWriteInfo*> entitywriteinfo;
+    Variable<int> propcount;
+};
+
+struct Point_SV_DetermineUpdateType
+{
+    void* props_changed_call;
+    void* propcount_positive_block;
 };
 
 struct Variables_SendTable_WritePropList
@@ -585,8 +600,10 @@ struct Struct_CSendTablePrecalc
 
 struct GameInfo
 {
-    FunctionSpan span_WDE;
-    Stack_CGameServer__WriteDeltaEntities stack_WDE;
+    Struct_CEntityWriteInfo struct_EWI;
+
+    Variables_SV_DetermineUpdateType vars_DUT;
+    Point_SV_DetermineUpdateType point_DUT;
 
     Variables_SendTable_WritePropList vars_WPL;
     Point_SendTable_WritePropList point_WPL;
@@ -920,6 +937,9 @@ void AddSendVarEdit(EditAction action, int entref, int client, int propindex, co
 
     EditInfo info = { action, priority, propindex, prop, var };
     entry->edits.push_back(info);
+
+    if (action == EditAction::SET)
+        entry->has_setter = true;
 }
 
 bool IsValidClient(IPluginContext *pContext, int client)
@@ -1051,39 +1071,16 @@ const sp_nativeinfo_t MyNatives[] =
 
 
 
-EditEntry* DiscoverEntry(int entity)
+EditEntry* HookDiscoverEntry(CEntityWriteInfo* entitywriteinfo)
 {
-    if (entity < 0 || g_editindices[entity] == -1)
+    int entity = ContextWrapper::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.entity);
+
+    if (!( 0 < entity && (size_t)entity < sizeof(g_editindices) ) || g_editindices[entity] == -1)
         return nullptr;
 
     EditList* list = &g_editlists[g_editindices[entity]];
 
-    // compiling with "-fno-omit-frame-pointer" (gcc) or "/Oy-" (msvc)
-    void* ebp_cur;
-#ifdef _MSC_VER
-    __asm mov ebp_cur, ebp
-#else
-    asm ("mov %%ebp, %0" : "=r"(ebp_cur));
-#endif
-
-    // walk up the frame stack to get the CBaseClient* parameter of CGameServer::WriteDeltaEntities
-    int counter = 0;
-    void** ebp_walk = (void**)ebp_cur;
-    while (true) {
-        // might also come from CGameServer::WriteTempEntities
-        if (counter++ > 8)
-            return nullptr;
-
-        void* eip = ebp_walk[1];
-        ebp_walk = (void**)ebp_walk[0];
-
-        if (g_gameinfo.span_WDE.start <= eip && eip < (uint8_t*)g_gameinfo.span_WDE.start + g_gameinfo.span_WDE.size)
-            break;
-    }
-
-    // extract client index from CBaseClient
-    void* baseclient = *(void**)((uint8_t*)ebp_walk + g_gameinfo.stack_WDE.client);
-    int client = *(int*)((uint8_t*)baseclient + 16);
+    int client = ContextWrapper::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.client);
 
     // check if edit list can be indexed with client. it should, but who knows.
     if (client < 0 || client >= 256)
@@ -1093,18 +1090,81 @@ EditEntry* DiscoverEntry(int entity)
 }
 
 // store entry address at the very end of the output buffer
-EditEntry** GetHookEntryAddress(bf_write* output)
+inline EditEntry** HookGetEntryAddress(bf_write* output)
 {
-    uintptr_t address = (uintptr_t)output->m_pData + output->m_nDataBytes - sizeof(EditEntry*);
-    return (EditEntry**)address;
+    uintptr_t entry_address = (uintptr_t)output->m_pData + output->m_nDataBytes - sizeof(EditEntry*);
+    return (EditEntry**)entry_address;
+}
+
+// get entry address in output buffer if a valid one was stored
+inline EditEntry* HookGetEntry(bf_write* output)
+{
+    return output->m_nDataBits != 8*output->m_nDataBytes ? *HookGetEntryAddress(output) : nullptr;
+}
+
+// write the current entry/null to the end of the output buffer
+safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_Start{};
+void MidHook_SV_DetermineUpdateType_Start(safetyhook::Context &registers)
+{
+    ContextWrapper context(registers);
+
+    CEntityWriteInfo* entitywriteinfo = context.var(g_gameinfo.vars_DUT.entitywriteinfo);
+
+    bf_write* output = ContextWrapper::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
+
+    *HookGetEntryAddress(output) = HookDiscoverEntry(entitywriteinfo);
+    output->m_nDataBits = 8*(output->m_nDataBytes - sizeof(EditEntry*)); // hint that end was written to
+}
+
+// skip to writing to output when there is a set edit and the entity hasn't changed to avoid edit getting ignored
+safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_PackCheck{};
+void MidHook_SV_DetermineUpdateType_PackCheck(safetyhook::Context &registers)
+{
+    ContextWrapper context(registers);
+
+    CEntityWriteInfo* entitywriteinfo = context.var(g_gameinfo.vars_DUT.entitywriteinfo);
+
+    bf_write* output = ContextWrapper::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
+
+    EditEntry* entry = HookGetEntry(output);
+    if (!entry)
+        return;
+
+    PackedEntity* oldpack = ContextWrapper::read<PackedEntity*>(entitywriteinfo, g_gameinfo.struct_EWI.oldpack);
+    PackedEntity* newpack = ContextWrapper::read<PackedEntity*>(entitywriteinfo, g_gameinfo.struct_EWI.newpack);
+
+    if (oldpack == newpack && entry->has_setter) {
+        context.var(g_gameinfo.vars_DUT.propcount) = 0;
+        context.ip() = g_gameinfo.point_DUT.propcount_positive_block;
+        return;
+    }
+    else {
+        context.ip() = g_gameinfo.point_DUT.props_changed_call;
+        return;
+    }
+}
+
+// skip changed prop count check if there is a set edit
+safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_PropCountCheck{};
+void MidHook_SV_DetermineUpdateType_PropCountCheck(safetyhook::Context &registers)
+{
+    ContextWrapper context(registers);
+
+    CEntityWriteInfo* entitywriteinfo = context.var(g_gameinfo.vars_DUT.entitywriteinfo);
+
+    bf_write* output = ContextWrapper::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
+
+    EditEntry* entry = HookGetEntry(output);
+    if (!entry || !entry->has_setter)
+        return;
+
+    context.ip() = g_gameinfo.point_DUT.propcount_positive_block;
 }
 
 safetyhook::InlineHook g_Hook_SendTable_WritePropList{};
 void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inputlength, bf_write* output, int entity, int* propindexlist, int propindexlistlength)
 {
-    EditEntry* entry = DiscoverEntry(entity);
-
-    *GetHookEntryAddress(output) = entry;
+    EditEntry* entry = HookGetEntry(output);
 
     if (!entry) {
         // normal call
@@ -1178,7 +1238,7 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     ContextWrapper context(registers);
 
     bf_write* output = context.var(g_gameinfo.vars_WPL.output);
-    const EditEntry* entry = *GetHookEntryAddress(output);
+    const EditEntry* entry = HookGetEntry(output);
     if (!entry)
         return;
 
@@ -1295,11 +1355,20 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
 
     // fill out game info struct
     {
-        if (!gameconf->GetAddress("CBaseServer::WriteDeltaEntities", &g_gameinfo.span_WDE.start))
-            RETURN_ERROR("Failed to find CBaseServer::WriteDeltaEntities.");
-        gameconf->GetOffset("CBaseServer::WriteDeltaEntities size", &g_gameinfo.span_WDE.size);
+        gameconf->GetOffset("CEntityWriteInfo entity", &g_gameinfo.struct_EWI.entity);
+        gameconf->GetOffset("CEntityWriteInfo output", &g_gameinfo.struct_EWI.output);
+        gameconf->GetOffset("CEntityWriteInfo client", &g_gameinfo.struct_EWI.client);
+        gameconf->GetOffset("CEntityWriteInfo oldpack", &g_gameinfo.struct_EWI.oldpack);
+        gameconf->GetOffset("CEntityWriteInfo newpack", &g_gameinfo.struct_EWI.newpack);
 
-        gameconf->GetOffset("CBaseServer::WriteDeltaEntities bp client", &g_gameinfo.stack_WDE.client);
+        g_variables.GetVariable("SV_DetermineUpdateType entitywriteinfo", &g_gameinfo.vars_DUT.entitywriteinfo);
+        g_variables.GetVariable("SV_DetermineUpdateType propcount", &g_gameinfo.vars_DUT.propcount);
+
+        if (!gameconf->GetAddress("SV_DetermineUpdateType props changed call", &g_gameinfo.point_DUT.props_changed_call))
+            RETURN_ERROR("Failed to find SV_DetermineUpdateType props changed call.");
+
+        if (!gameconf->GetAddress("SV_DetermineUpdateType positive propcount block", &g_gameinfo.point_DUT.propcount_positive_block))
+            RETURN_ERROR("Failed to find SV_DetermineUpdateType positive propcount block.");
 
         g_variables.GetVariable("SendTable_WritePropList table", &g_gameinfo.vars_WPL.table);
         g_variables.GetVariable("SendTable_WritePropList output", &g_gameinfo.vars_WPL.output);
@@ -1341,6 +1410,48 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
             RETURN_ERROR("Failed to hook SendTable_WritePropList.");
 
         g_Hook_SendTable_WritePropList = std::move(*hook);
+    }
+
+    // create a mid-hook at the SV_DetermineUpdateType start that finds the entry for the client and entity
+    // the pointer to the entry (possibily null) will be stored at the very end of the output buffer
+    {
+        void* address;
+        if (!gameconf->GetAddress("SV_DetermineUpdateType start", &address))
+            RETURN_ERROR("Failed to find SV_DetermineUpdateType start.");
+
+        auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_Start);
+        if (!midhook.has_value())
+            RETURN_ERROR("Failed to mid-hook SV_DetermineUpdateType start.");
+
+        g_MidHook_SV_DetermineUpdateType_Start = std::move(*midhook);
+    }
+
+    // create a mid-hook at the SV_DetermineUpdateType pack equality check that skips all modification checks and
+    // goes straight to writing custom edits if the packs are equal and an edit sets a prop
+    // also skips over a hltv cache for stv recordings if they aren't equal
+    {
+        void* address;
+        if (!gameconf->GetAddress("SV_DetermineUpdateType pack equality check", &address))
+            RETURN_ERROR("Failed to find SV_DetermineUpdateType pack equality check.");
+
+        auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_PackCheck);
+        if (!midhook.has_value())
+            RETURN_ERROR("Failed to mid-hook SV_DetermineUpdateType pack equality check.");
+
+        g_MidHook_SV_DetermineUpdateType_PackCheck = std::move(*midhook);
+    }
+
+    // create a mid-hook at the SV_DetermineUpdateType positive propcount check that always passes the check if a set edit was made
+    {
+        void* address;
+        if (!gameconf->GetAddress("SV_DetermineUpdateType positive propcount check", &address))
+            RETURN_ERROR("Failed to find SV_DetermineUpdateType positive propcount check.");
+
+        auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_PropCountCheck);
+        if (!midhook.has_value())
+            RETURN_ERROR("Failed to mid-hook SV_DetermineUpdateType positive propcount check.");
+
+        g_MidHook_SV_DetermineUpdateType_PropCountCheck = std::move(*midhook);
     }
 
     // create a mid-hook at the SendTable_WritePropList loop break condition that skips to the continuation point if an edit was made
@@ -1400,6 +1511,15 @@ void SendVarEdit::SDK_OnUnload()
 
     if (g_MidHook_SendTable_WritePropList_BreakCondition.enabled())
         g_MidHook_SendTable_WritePropList_BreakCondition = {};
+
+    if (g_MidHook_SV_DetermineUpdateType_PropCountCheck.enabled())
+        g_MidHook_SV_DetermineUpdateType_PropCountCheck = {};
+
+    if (g_MidHook_SV_DetermineUpdateType_PackCheck.enabled())
+        g_MidHook_SV_DetermineUpdateType_PackCheck = {};
+
+    if (g_MidHook_SV_DetermineUpdateType_Start.enabled())
+        g_MidHook_SV_DetermineUpdateType_Start = {};
 
     if (g_Hook_SendTable_WritePropList.enabled())
         g_Hook_SendTable_WritePropList = {};

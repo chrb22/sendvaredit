@@ -84,7 +84,8 @@ native Handle SendVarVectorXY(const float vec[2]);
 native Handle SendVarString(const char[] string);
 
 /**
- * Sets the networked value of an entity's property for the current frame.
+ * Sets the networked value of an entity's property and ensures it is included in client updates for the current frame.
+ * Does not guarantee that the client(s) will receive an update on the current frame and does not remember the call for later frames.
  *
  * @param entity            Entity/edict index.
  * @param client            Player's index. Use -1 to target everyone.
