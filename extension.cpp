@@ -43,6 +43,7 @@
 #include <sm_namehashset.h>
 
 #include <tier1/bitbuf.h>
+#include <eiface.h>
 #include <iserverunknown.h>
 #include <iservernetworkable.h>
 #include <server_class.h>
@@ -1051,6 +1052,75 @@ cell_t smn_OmitSendVar(IPluginContext* pContext, const cell_t* params)
     return 0;
 }
 
+
+
+
+
+HandleType_t g_TransmitBitVecType = 0;
+class TransmitBitVecTypeHandler : public IHandleTypeDispatch
+{
+public:
+    virtual void OnHandleDestroy(HandleType_t type, void *object) override
+    {
+    }
+};
+TransmitBitVecTypeHandler g_TransmitBitVecTypeHandler;
+
+// bool TransmitBitVec.Get(int entity)
+cell_t smn_TransmitBitVec_Get(IPluginContext* pContext, const cell_t* params)
+{
+    Handle_t handle = params[1];
+    CCheckTransmitInfo* pInfo = nullptr;
+    HandleSecurity security(nullptr, myself->GetIdentity());
+    HandleError error = handlesys->ReadHandle(handle, g_TransmitBitVecType, &security, (void**)&pInfo);
+    if (error != HandleError_None)
+        return pContext->ThrowNativeError("Invalid transmit bitvec handle %x (error %d)", handle, error);
+
+    int entref = params[2];
+
+    int index;
+    edict_t* edict;
+    CBaseEntity* entity;
+    IServerUnknown *unknown;
+    IServerNetworkable *networkable;
+    if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
+        return false;
+
+    return pInfo->m_pTransmitEdict->Get(index);
+}
+
+// void TransmitBitVec.Set(int entity, bool transmit)
+cell_t smn_TransmitBitVec_Set(IPluginContext* pContext, const cell_t* params)
+{
+    Handle_t handle = params[1];
+    CCheckTransmitInfo* pInfo = nullptr;
+    HandleSecurity security(nullptr, myself->GetIdentity());
+    HandleError error = handlesys->ReadHandle(handle, g_TransmitBitVecType, &security, (void**)&pInfo);
+    if (error != HandleError_None)
+        return pContext->ThrowNativeError("Invalid transmit bitvec handle %x (error %d)", handle, error);
+
+    int entref = params[2];
+
+    int index;
+    edict_t* edict;
+    CBaseEntity* entity;
+    IServerUnknown *unknown;
+    IServerNetworkable *networkable;
+    if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
+        return false;
+
+    bool transmit = params[3];
+    pInfo->m_pTransmitEdict->Set(index, transmit);
+    if (pInfo->m_pTransmitAlways)
+        pInfo->m_pTransmitAlways->Set(index, transmit);
+
+    return 0;
+}
+
+
+
+
+
 const sp_nativeinfo_t MyNatives[] =
 {
     {"SendProxyAngle", smn_SendProxyAngle},
@@ -1064,6 +1134,8 @@ const sp_nativeinfo_t MyNatives[] =
     {"SetSendVar", smn_SetSendVar},
     {"ReplaceSendVar", smn_ReplaceSendVar},
     {"OmitSendVar", smn_OmitSendVar},
+    {"TransmitBitVec.Get", smn_TransmitBitVec_Get},
+    {"TransmitBitVec.Set", smn_TransmitBitVec_Set},
     {NULL, NULL},
 };
 
@@ -1300,6 +1372,32 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     context.ip() = g_gameinfo.point_WPL.loop_continue;
 }
 
+IForward *g_Forward_Post_OnCheckTransmit;
+
+void Hook_CheckTransmit(CCheckTransmitInfo* pInfo, const unsigned short* pEdictIndices, int nEdicts)
+{
+    int client = gamehelpers->IndexOfEdict(pInfo->m_pClientEnt);
+
+    Handle_t handle = handlesys->CreateHandle(
+        g_TransmitBitVecType,
+        pInfo,
+        myself->GetIdentity(),
+        myself->GetIdentity(),
+        nullptr
+    );
+
+    if (g_Forward_Post_OnCheckTransmit->GetFunctionCount()) {
+        g_Forward_Post_OnCheckTransmit->PushCell(client);
+        g_Forward_Post_OnCheckTransmit->PushCell(handle);
+        g_Forward_Post_OnCheckTransmit->Execute();
+    }
+
+    HandleSecurity security(nullptr, myself->GetIdentity());
+    handlesys->FreeHandle(handle, &security);
+
+    RETURN_META(MRES_IGNORED);
+}
+
 IForward *g_Forward_Pre_OnSendClientMessages;
 IForward *g_Forward_Post_OnSendClientMessages;
 
@@ -1341,6 +1439,16 @@ public:
         error[maxlength - 1] = '\0';                     \
     return false;                                        \
 }                                                        \
+
+SH_DECL_HOOK3_void(IServerGameEnts, CheckTransmit, SH_NOATTRIB, 0, CCheckTransmitInfo*, const unsigned short*, int);
+
+IServerGameEnts *g_gameents;
+bool SendVarEdit::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxlen, bool late)
+{
+    GET_V_IFACE_CURRENT(GetServerFactory, g_gameents, IServerGameEnts, INTERFACEVERSION_SERVERGAMEENTS);
+
+    return true;
+}
 
 bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
@@ -1397,6 +1505,11 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
             RETURN_ERROR("Failed to hook CGameServer::SendClientMessages.");
 
         g_Hook_CGameServer__SendClientMessages = std::move(*hook);
+    }
+
+    // hook CServerGameEnts::CheckTransmit to catch when the server decides what entities to send to a client
+    {
+        SH_ADD_HOOK(IServerGameEnts, CheckTransmit, g_gameents, SH_STATIC(Hook_CheckTransmit), true);
     }
 
     // hook SendTable_WritePropList to check for an entry
@@ -1477,6 +1590,8 @@ void SendVarEdit::SDK_OnAllLoaded()
     g_Forward_Pre_OnSendClientMessages = forwards->CreateForward("OnSendClientMessages", ET_Ignore, 0, nullptr);
     g_Forward_Post_OnSendClientMessages = forwards->CreateForward("OnSendClientMessagesPost", ET_Ignore, 0, nullptr);
 
+    g_Forward_Post_OnCheckTransmit = forwards->CreateForward("OnCheckTransmit", ET_Ignore, 2, nullptr, Param_Cell, Param_Cell);
+
     HandleAccess rules;
     handlesys->InitAccessDefaults(nullptr, &rules);
     rules.access[HandleAccess_Delete] = HANDLE_RESTRICT_IDENTITY;
@@ -1491,17 +1606,33 @@ void SendVarEdit::SDK_OnAllLoaded()
         nullptr
     );
 
+    g_TransmitBitVecType = handlesys->CreateType(
+        "TransmitBitVec",
+        &g_TransmitBitVecTypeHandler,
+        0,
+        nullptr,
+        &rules,
+        myself->GetIdentity(),
+        nullptr
+    );
+
     sharesys->RegisterLibrary(myself, "sendvaredit");
     sharesys->AddNatives(myself, MyNatives);
 }
 
 void SendVarEdit::SDK_OnUnload()
 {
+    if (g_TransmitBitVecType)
+        handlesys->RemoveType(g_TransmitBitVecType, myself->GetIdentity());
+
     if (g_SendVarType)
         handlesys->RemoveType(g_SendVarType, myself->GetIdentity());
 
     for (NameHashSet<SendTableInfo*>::iterator iter = g_classes.iter(); !iter.empty(); iter.next())
         delete *iter;
+
+    if (g_Forward_Post_OnCheckTransmit)
+        forwards->ReleaseForward(g_Forward_Post_OnCheckTransmit);
 
     if (g_Forward_Pre_OnSendClientMessages)
         forwards->ReleaseForward(g_Forward_Pre_OnSendClientMessages);
@@ -1524,6 +1655,7 @@ void SendVarEdit::SDK_OnUnload()
     if (g_Hook_SendTable_WritePropList.enabled())
         g_Hook_SendTable_WritePropList = {};
 
+    SH_REMOVE_HOOK(IServerGameEnts, CheckTransmit, g_gameents, SH_STATIC(Hook_CheckTransmit), true);
 
     if (g_Hook_CGameServer__SendClientMessages.enabled())
         g_Hook_CGameServer__SendClientMessages = {};
