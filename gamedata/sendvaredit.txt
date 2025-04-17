@@ -197,6 +197,11 @@
 
         "Addresses"
         {
+            "CGameServer::SendClientMessages"
+            {
+                "signature" "CGameServer::SendClientMessages"
+            }
+
             "SV_DetermineUpdateType start"
             {
                 "signature" "SV_DetermineUpdateType start"
@@ -220,6 +225,11 @@
             "SV_DetermineUpdateType positive propcount block"
             {
                 "signature" "SV_DetermineUpdateType positive propcount block"
+            }
+
+            "SendTable_WritePropList"
+            {
+                "signature" "SendTable_WritePropList"
             }
 
             "SendTable_WritePropList loop break condition"

@@ -240,32 +240,32 @@ struct Variable
     int32_t read;
 };
 
-class ContextWrapper
+class Context
 {
 public:
     safetyhook::Context &registers;
 
 public:
-    ContextWrapper(safetyhook::Context &context)
+    Context(safetyhook::Context &context)
         : registers(context)
     {}
 
     template<typename T>
-    static inline T& read(void* address, uint32_t offset)
+    static inline T& read(void* address, int32_t offset)
     {
         return *(T*)((uintptr_t)address + offset);
     }
 
     template<typename T>
-    inline T& reg(size_t reg) { return *(T*)((uint8_t*)&registers + reg); }
+    inline T& reg(size_t reg) { return read<T>(&registers, reg); }
 
     template<typename T>
     inline T& stack(int32_t offset)
     {
 #ifdef _x86_64
-        return *(T*)(registers.rbp + offset);
+        return read<T>(registers.rbp, offset);
 #else
-        return *(T*)(registers.ebp + offset);
+        return read<T>(registers.ebp, offset);
 #endif
     }
 
@@ -300,7 +300,7 @@ public:
     inline T& var(Variable<T> &var)
     {
         void* base = var.info.is_register ? &registers : (void*)bp();
-        T &value = *(T*)((uintptr_t)base + var.offset);
+        T &value = read<T>(base, var.offset);
 
         if (var.info.is_read)
             value = read<T>((void*)&value, var.offset);
@@ -423,7 +423,7 @@ public:
         current_read = false;
     }
 
-    virtual SMCResult ReadSMC_NewSection(const SMCStates *states, const char *name) override
+    virtual SMCResult ReadSMC_NewSection(const SMCStates* states, const char* name) override
     {
         bool current_platform, other_platform;
         IsPlatform(name, &current_platform, &other_platform);
@@ -453,7 +453,7 @@ public:
         return SMCResult_Continue;
     }
 
-    virtual SMCResult ReadSMC_LeavingSection(const SMCStates *states) override
+    virtual SMCResult ReadSMC_LeavingSection(const SMCStates* states) override
     {
         // inside skipped platform
         if (ignore_level) {
@@ -481,7 +481,7 @@ public:
         return SMCResult_Continue;
     }
 
-    virtual SMCResult ReadSMC_KeyValue(const SMCStates *states, const char *key, const char *value) override
+    virtual SMCResult ReadSMC_KeyValue(const SMCStates* states, const char* key, const char* value) override
     {
         // inside skipped platform
         if (ignore_level)
@@ -567,7 +567,7 @@ struct Variables_SV_DetermineUpdateType
     Variable<int> propcount;
 };
 
-struct Point_SV_DetermineUpdateType
+struct Points_SV_DetermineUpdateType
 {
     void* props_changed_call;
     void* propcount_positive_block;
@@ -581,7 +581,7 @@ struct Variables_SendTable_WritePropList
     Variable<int> output_lastpropindex;
 };
 
-struct Point_SendTable_WritePropList
+struct Points_SendTable_WritePropList
 {
     void* loop_continue;
 };
@@ -604,10 +604,10 @@ struct GameInfo
     Struct_CEntityWriteInfo struct_EWI;
 
     Variables_SV_DetermineUpdateType vars_DUT;
-    Point_SV_DetermineUpdateType point_DUT;
+    Points_SV_DetermineUpdateType points_DUT;
 
     Variables_SendTable_WritePropList vars_WPL;
-    Point_SendTable_WritePropList point_WPL;
+    Points_SendTable_WritePropList points_WPL;
 
     PropTypeFns* proptypefns;
     Struct_CSendTablePrecalc struct_STP;
@@ -627,7 +627,7 @@ bool GetEntityInfo(IPluginContext* pContext, int entref, int* index, edict_t** e
 
     *entity = gamehelpers->ReferenceToEntity(entref);
 
-    *unknown = (IServerUnknown *)(*entity);
+    *unknown = (IServerUnknown*)(*entity);
     *networkable = (*unknown)->GetNetworkable();
     if (!(*networkable))
         return pContext->ThrowNativeError("Edict %d (%d) is not networkable", *index, entref);
@@ -644,10 +644,10 @@ cell_t smn_SendProxyAngle(IPluginContext* pContext, const cell_t* params)
 // void SendProxyQAnglesNative(const float qangles[3], float vec[3])
 cell_t smn_SendProxyQAngles(IPluginContext* pContext, const cell_t* params)
 {
-    cell_t *sp_qangles;
+    cell_t* sp_qangles;
     pContext->LocalToPhysAddr(params[1], &sp_qangles);
 
-    cell_t *sp_vec;
+    cell_t* sp_vec;
     pContext->LocalToPhysAddr(params[2], &sp_vec);
 
     for (int i = 0; i < 3; i++)
@@ -666,8 +666,8 @@ cell_t smn_SendProxyEHandle(IPluginContext* pContext, const cell_t* params)
     int index;
     edict_t* edict;
     CBaseEntity* entity;
-    IServerUnknown *unknown;
-    IServerNetworkable *networkable;
+    IServerUnknown* unknown;
+    IServerNetworkable* networkable;
     if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
         return INVALID_NETWORKED_EHANDLE_VALUE;
 
@@ -682,14 +682,8 @@ HandleType_t g_SendVarType = 0;
 class SendVarTypeHandler : public IHandleTypeDispatch
 {
 public:
-    void OnHandleDestroy(HandleType_t type, void *object)
+    virtual void OnHandleDestroy(HandleType_t type, void* object) override
     {
-        // const DVariant* var = (DVariant*)object;
-        // switch (var->m_Type) {
-        //     // special type cleanup
-        //     default:
-        //         break;
-        // }
     }
 };
 SendVarTypeHandler g_SendVarTypeHandler;
@@ -751,7 +745,7 @@ cell_t smn_SendVarFloat(IPluginContext* pContext, const cell_t* params)
 // Handle SendVarVector(const float vec[3])
 cell_t smn_SendVarVector(IPluginContext* pContext, const cell_t* params)
 {
-    cell_t *sp_vec;
+    cell_t* sp_vec;
     pContext->LocalToPhysAddr(params[1], &sp_vec);
 
     Vector vec;
@@ -769,7 +763,7 @@ cell_t smn_SendVarVector(IPluginContext* pContext, const cell_t* params)
 // Handle SendVarVectorXY(const float vec[2])
 cell_t smn_SendVarVectorXY(IPluginContext* pContext, const cell_t* params)
 {
-    cell_t *sp_vec;
+    cell_t* sp_vec;
     pContext->LocalToPhysAddr(params[1], &sp_vec);
 
     Vector vec;
@@ -853,8 +847,8 @@ bool FindClassSendPropInfo(ServerClass* serverclass, const char* propname, SendP
     if (!sendtableinfo->lookup.retrieve(propname, info)) {
         CSendTablePrecalc* precalc = serverclass->m_pTable->m_pPrecalc;
 
-        int propcount = *(int*)((uint8_t*)precalc + g_gameinfo.struct_STP.propcount);
-        SendProp** props = *(SendProp***)((uint8_t*)precalc + g_gameinfo.struct_STP.props);
+        int propcount = Context::read<int>(precalc, g_gameinfo.struct_STP.propcount);
+        SendProp** props = Context::read<SendProp**>(precalc, g_gameinfo.struct_STP.props);
 
         SendProp** prop = std::find_if(props, props + propcount, [propname](SendProp* prop) { return strcmp(prop->GetName(), propname) == 0; });
 
@@ -879,8 +873,8 @@ cell_t smn_HasNetworkableProp(IPluginContext* pContext, const cell_t* params)
     int index;
     edict_t* edict;
     CBaseEntity* entity;
-    IServerUnknown *unknown;
-    IServerNetworkable *networkable;
+    IServerUnknown* unknown;
+    IServerNetworkable* networkable;
     if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
         return false;
 
@@ -888,13 +882,13 @@ cell_t smn_HasNetworkableProp(IPluginContext* pContext, const cell_t* params)
     return FindClassSendPropInfo(networkable->GetServerClass(), propname, &info);
 }
 
-bool FindEntitySendPropInfo(IPluginContext *pContext, int entref, const char* propname, SendPropInfo* info)
+bool FindEntitySendPropInfo(IPluginContext* pContext, int entref, const char* propname, SendPropInfo* info)
 {
     int index;
     edict_t* edict;
     CBaseEntity* entity;
-    IServerUnknown *unknown;
-    IServerNetworkable *networkable;
+    IServerUnknown* unknown;
+    IServerNetworkable* networkable;
     if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
         return false;
 
@@ -916,7 +910,7 @@ void AddSendVarEdit(EditAction action, int entref, int client, int propindex, co
     if (client == -1) {
         int maxclients = playerhelpers->GetMaxClients();
         for (client = 1; client <= maxclients; client++) {
-            IGamePlayer *player = playerhelpers->GetGamePlayer(client);
+            IGamePlayer* player = playerhelpers->GetGamePlayer(client);
             if (!player->IsConnected())
                 continue;
 
@@ -943,12 +937,12 @@ void AddSendVarEdit(EditAction action, int entref, int client, int propindex, co
         entry->has_setter = true;
 }
 
-bool IsValidClient(IPluginContext *pContext, int client)
+bool IsValidClient(IPluginContext* pContext, int client)
 {
     if ((client < 1) || (client > playerhelpers->GetMaxClients()))
         return pContext->ThrowNativeError("Client index %d is invalid.", client);
 
-    IGamePlayer *player = playerhelpers->GetGamePlayer(client);
+    IGamePlayer* player = playerhelpers->GetGamePlayer(client);
     if (!player->IsConnected())
         return pContext->ThrowNativeError("Client %d is not connected.", client);
 
@@ -1060,7 +1054,7 @@ HandleType_t g_TransmitBitVecType = 0;
 class TransmitBitVecTypeHandler : public IHandleTypeDispatch
 {
 public:
-    virtual void OnHandleDestroy(HandleType_t type, void *object) override
+    virtual void OnHandleDestroy(HandleType_t type, void* object) override
     {
     }
 };
@@ -1081,8 +1075,8 @@ cell_t smn_TransmitBitVec_Get(IPluginContext* pContext, const cell_t* params)
     int index;
     edict_t* edict;
     CBaseEntity* entity;
-    IServerUnknown *unknown;
-    IServerNetworkable *networkable;
+    IServerUnknown* unknown;
+    IServerNetworkable* networkable;
     if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
         return false;
 
@@ -1104,8 +1098,8 @@ cell_t smn_TransmitBitVec_Set(IPluginContext* pContext, const cell_t* params)
     int index;
     edict_t* edict;
     CBaseEntity* entity;
-    IServerUnknown *unknown;
-    IServerNetworkable *networkable;
+    IServerUnknown* unknown;
+    IServerNetworkable* networkable;
     if (!GetEntityInfo(pContext, entref, &index, &edict, &entity, &unknown, &networkable))
         return false;
 
@@ -1145,14 +1139,14 @@ const sp_nativeinfo_t MyNatives[] =
 
 EditEntry* HookDiscoverEntry(CEntityWriteInfo* entitywriteinfo)
 {
-    int entity = ContextWrapper::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.entity);
+    int entity = Context::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.entity);
 
     if (!( 0 < entity && (size_t)entity < sizeof(g_editindices) ) || g_editindices[entity] == -1)
         return nullptr;
 
     EditList* list = &g_editlists[g_editindices[entity]];
 
-    int client = ContextWrapper::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.client);
+    int client = Context::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.client);
 
     // check if edit list can be indexed with client. it should, but who knows.
     if (client < 0 || client >= 256)
@@ -1178,11 +1172,11 @@ inline EditEntry* HookGetEntry(bf_write* output)
 safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_Start{};
 void MidHook_SV_DetermineUpdateType_Start(safetyhook::Context &registers)
 {
-    ContextWrapper context(registers);
+    Context context(registers);
 
     CEntityWriteInfo* entitywriteinfo = context.var(g_gameinfo.vars_DUT.entitywriteinfo);
 
-    bf_write* output = ContextWrapper::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
+    bf_write* output = Context::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
 
     *HookGetEntryAddress(output) = HookDiscoverEntry(entitywriteinfo);
     output->m_nDataBits = 8*(output->m_nDataBytes - sizeof(EditEntry*)); // hint that end was written to
@@ -1192,26 +1186,26 @@ void MidHook_SV_DetermineUpdateType_Start(safetyhook::Context &registers)
 safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_PackCheck{};
 void MidHook_SV_DetermineUpdateType_PackCheck(safetyhook::Context &registers)
 {
-    ContextWrapper context(registers);
+    Context context(registers);
 
     CEntityWriteInfo* entitywriteinfo = context.var(g_gameinfo.vars_DUT.entitywriteinfo);
 
-    bf_write* output = ContextWrapper::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
+    bf_write* output = Context::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
 
     EditEntry* entry = HookGetEntry(output);
     if (!entry)
         return;
 
-    PackedEntity* oldpack = ContextWrapper::read<PackedEntity*>(entitywriteinfo, g_gameinfo.struct_EWI.oldpack);
-    PackedEntity* newpack = ContextWrapper::read<PackedEntity*>(entitywriteinfo, g_gameinfo.struct_EWI.newpack);
+    PackedEntity* oldpack = Context::read<PackedEntity*>(entitywriteinfo, g_gameinfo.struct_EWI.oldpack);
+    PackedEntity* newpack = Context::read<PackedEntity*>(entitywriteinfo, g_gameinfo.struct_EWI.newpack);
 
     if (oldpack == newpack && entry->has_setter) {
         context.var(g_gameinfo.vars_DUT.propcount) = 0;
-        context.ip() = g_gameinfo.point_DUT.propcount_positive_block;
+        context.ip() = g_gameinfo.points_DUT.propcount_positive_block;
         return;
     }
     else {
-        context.ip() = g_gameinfo.point_DUT.props_changed_call;
+        context.ip() = g_gameinfo.points_DUT.props_changed_call;
         return;
     }
 }
@@ -1220,17 +1214,17 @@ void MidHook_SV_DetermineUpdateType_PackCheck(safetyhook::Context &registers)
 safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_PropCountCheck{};
 void MidHook_SV_DetermineUpdateType_PropCountCheck(safetyhook::Context &registers)
 {
-    ContextWrapper context(registers);
+    Context context(registers);
 
     CEntityWriteInfo* entitywriteinfo = context.var(g_gameinfo.vars_DUT.entitywriteinfo);
 
-    bf_write* output = ContextWrapper::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
+    bf_write* output = Context::read<bf_write*>(entitywriteinfo, g_gameinfo.struct_EWI.output);
 
     EditEntry* entry = HookGetEntry(output);
     if (!entry || !entry->has_setter)
         return;
 
-    context.ip() = g_gameinfo.point_DUT.propcount_positive_block;
+    context.ip() = g_gameinfo.points_DUT.propcount_positive_block;
 }
 
 safetyhook::InlineHook g_Hook_SendTable_WritePropList{};
@@ -1307,7 +1301,7 @@ void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inp
 safetyhook::MidHook g_MidHook_SendTable_WritePropList_BreakCondition{};
 void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registers)
 {
-    ContextWrapper context(registers);
+    Context context(registers);
 
     bf_write* output = context.var(g_gameinfo.vars_WPL.output);
     const EditEntry* entry = HookGetEntry(output);
@@ -1315,7 +1309,7 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
         return;
 
     SendTable* table = context.var(g_gameinfo.vars_WPL.table);
-    SendProp** props = *(SendProp***)((uint8_t*)table->m_pPrecalc + g_gameinfo.struct_STP.props);
+    SendProp** props = Context::read<SendProp**>(table->m_pPrecalc, g_gameinfo.struct_STP.props);
 
     int propindex = context.var(g_gameinfo.vars_WPL.propindex);
     SendProp* prop = props[propindex];
@@ -1369,10 +1363,10 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     }
 
     // continue; the loop
-    context.ip() = g_gameinfo.point_WPL.loop_continue;
+    context.ip() = g_gameinfo.points_WPL.loop_continue;
 }
 
-IForward *g_Forward_Post_OnCheckTransmit;
+IForward* g_Forward_Post_OnCheckTransmit;
 
 void Hook_CheckTransmit(CCheckTransmitInfo* pInfo, const unsigned short* pEdictIndices, int nEdicts)
 {
@@ -1398,8 +1392,8 @@ void Hook_CheckTransmit(CCheckTransmitInfo* pInfo, const unsigned short* pEdictI
     RETURN_META(MRES_IGNORED);
 }
 
-IForward *g_Forward_Pre_OnSendClientMessages;
-IForward *g_Forward_Post_OnSendClientMessages;
+IForward* g_Forward_Pre_OnSendClientMessages;
+IForward* g_Forward_Post_OnSendClientMessages;
 
 safetyhook::InlineHook g_Hook_CGameServer__SendClientMessages{};
 class Hook_CGameServer
@@ -1442,19 +1436,19 @@ public:
 
 SH_DECL_HOOK3_void(IServerGameEnts, CheckTransmit, SH_NOATTRIB, 0, CCheckTransmitInfo*, const unsigned short*, int);
 
-IServerGameEnts *g_gameents;
-bool SendVarEdit::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxlen, bool late)
+IServerGameEnts* g_gameents;
+bool SendVarEdit::SDK_OnMetamodLoad(ISmmAPI* ismm, char* error, size_t maxlen, bool late)
 {
     GET_V_IFACE_CURRENT(GetServerFactory, g_gameents, IServerGameEnts, INTERFACEVERSION_SERVERGAMEENTS);
 
     return true;
 }
 
-bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
+bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
 {
     std::fill(g_editindices, g_editindices + MAX_EDICTS, -1);
 
-    // get info about what stack offsets and registers
+    // get info about what registers and stack offsets function variables are stored at
     gameconfs->AddUserConfigHook("Variables", &g_variables);
 
     IGameConfig* gameconf;
@@ -1472,10 +1466,10 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
         g_variables.GetVariable("SV_DetermineUpdateType entitywriteinfo", &g_gameinfo.vars_DUT.entitywriteinfo);
         g_variables.GetVariable("SV_DetermineUpdateType propcount", &g_gameinfo.vars_DUT.propcount);
 
-        if (!gameconf->GetAddress("SV_DetermineUpdateType props changed call", &g_gameinfo.point_DUT.props_changed_call))
+        if (!gameconf->GetAddress("SV_DetermineUpdateType props changed call", &g_gameinfo.points_DUT.props_changed_call))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType props changed call.");
 
-        if (!gameconf->GetAddress("SV_DetermineUpdateType positive propcount block", &g_gameinfo.point_DUT.propcount_positive_block))
+        if (!gameconf->GetAddress("SV_DetermineUpdateType positive propcount block", &g_gameinfo.points_DUT.propcount_positive_block))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType positive propcount block.");
 
         g_variables.GetVariable("SendTable_WritePropList table", &g_gameinfo.vars_WPL.table);
@@ -1483,7 +1477,7 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
         g_variables.GetVariable("SendTable_WritePropList propindex", &g_gameinfo.vars_WPL.propindex);
         g_variables.GetVariable("SendTable_WritePropList output_lastpropindex", &g_gameinfo.vars_WPL.output_lastpropindex);
 
-        if (!gameconf->GetAddress("SendTable_WritePropList loop continue", &g_gameinfo.point_WPL.loop_continue))
+        if (!gameconf->GetAddress("SendTable_WritePropList loop continue", &g_gameinfo.points_WPL.loop_continue))
             RETURN_ERROR("Failed to find SendTable_WritePropList loop continuation point.");
 
         if (!gameconf->GetAddress("&g_PropTypeFns", (void**)&g_gameinfo.proptypefns))
@@ -1496,7 +1490,7 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
     // hook CGameServer::SendClientMessages to catch when the server is about to network stuff to clients
     {
         void* address;
-        if (!gameconf->GetMemSig("CGameServer::SendClientMessages", &address))
+        if (!gameconf->GetAddress("CGameServer::SendClientMessages", &address))
             RETURN_ERROR("Failed to find CGameServer::SendClientMessages.");
 
         auto function = &Hook_CGameServer::SendClientMessages;
@@ -1515,7 +1509,7 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
     // hook SendTable_WritePropList to check for an entry
     {
         void* address;
-        if (!gameconf->GetMemSig("SendTable_WritePropList", &address))
+        if (!gameconf->GetAddress("SendTable_WritePropList", &address))
             RETURN_ERROR("Failed to find SendTable_WritePropList.");
 
         auto hook = safetyhook::InlineHook::create(address, Hook_SendTable_WritePropList);
@@ -1575,7 +1569,7 @@ bool SendVarEdit::SDK_OnLoad(char *error, size_t maxlength, bool late)
 
         auto midhook = safetyhook::MidHook::create(address, MidHook_SendTable_WritePropList_BreakCondition);
         if (!midhook.has_value())
-            RETURN_ERROR("Failed to mid-hook CGameServer::SendClientMessages.");
+            RETURN_ERROR("Failed to mid-hook SendTable_WritePropList loop break condition.");
 
         g_MidHook_SendTable_WritePropList_BreakCondition = std::move(*midhook);
     }
