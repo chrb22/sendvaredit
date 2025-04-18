@@ -1211,8 +1211,8 @@ void MidHook_SV_DetermineUpdateType_PackCheck(safetyhook::Context &registers)
 }
 
 // skip changed prop count check if there is a set edit
-safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_PropCountCheck{};
-void MidHook_SV_DetermineUpdateType_PropCountCheck(safetyhook::Context &registers)
+safetyhook::MidHook g_MidHook_SV_DetermineUpdateType_VCRPrintCheck{};
+void MidHook_SV_DetermineUpdateType_VCRPrintCheck(safetyhook::Context &registers)
 {
     Context context(registers);
 
@@ -1548,17 +1548,17 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
         g_MidHook_SV_DetermineUpdateType_PackCheck = std::move(*midhook);
     }
 
-    // create a mid-hook at the SV_DetermineUpdateType positive propcount check that always passes the check if a set edit was made
+    // create a mid-hook at the SV_DetermineUpdateType VCR print check that always passes the positive propcount check if a set edit was made
     {
         void* address;
-        if (!gameconf->GetAddress("SV_DetermineUpdateType positive propcount check", &address))
-            RETURN_ERROR("Failed to find SV_DetermineUpdateType positive propcount check.");
+        if (!gameconf->GetAddress("SV_DetermineUpdateType VCR print check", &address))
+            RETURN_ERROR("Failed to find SV_DetermineUpdateType VCR print check.");
 
-        auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_PropCountCheck);
+        auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_VCRPrintCheck);
         if (!midhook.has_value())
-            RETURN_ERROR("Failed to mid-hook SV_DetermineUpdateType positive propcount check.");
+            RETURN_ERROR("Failed to mid-hook SV_DetermineUpdateType VCR print check.");
 
-        g_MidHook_SV_DetermineUpdateType_PropCountCheck = std::move(*midhook);
+        g_MidHook_SV_DetermineUpdateType_VCRPrintCheck = std::move(*midhook);
     }
 
     // create a mid-hook at the SendTable_WritePropList loop break condition that skips to the continuation point if an edit was made
@@ -1637,8 +1637,8 @@ void SendVarEdit::SDK_OnUnload()
     if (g_MidHook_SendTable_WritePropList_BreakCondition.enabled())
         g_MidHook_SendTable_WritePropList_BreakCondition = {};
 
-    if (g_MidHook_SV_DetermineUpdateType_PropCountCheck.enabled())
-        g_MidHook_SV_DetermineUpdateType_PropCountCheck = {};
+    if (g_MidHook_SV_DetermineUpdateType_VCRPrintCheck.enabled())
+        g_MidHook_SV_DetermineUpdateType_VCRPrintCheck = {};
 
     if (g_MidHook_SV_DetermineUpdateType_PackCheck.enabled())
         g_MidHook_SV_DetermineUpdateType_PackCheck = {};

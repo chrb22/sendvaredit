@@ -136,13 +136,13 @@
                 // 8B 4E ? 8D 85 ? ? ? ? 68 00 10 00 00
             }
 
-            "SV_DetermineUpdateType positive propcount check"
+            "SV_DetermineUpdateType VCR print check"
             {
                 "library"   "engine"
-                "linux"     "\x85\xF6\x7F\x2A\x80\xBB\x2A\x2A\x2A\x2A\x00"
-                // 85 F6 7F ? 80 BB ? ? ? ? 00
-                "windows"   "\x85\xFF\x7E\x2A\x6A\x00"
-                // 85 FF 7E ? 6A 00
+                "linux"     "\xA1\x2A\x2A\x2A\x2A\x8B\x40\x2A\x85\xC0\x74\x2A\x8D\x04\xB5\x2A\x2A\x2A\x2A"
+                // A1 ? ? ? ? 8B 40 ? 85 C0 74 ? 8D 04 B5 ? ? ? ?
+                "windows"   "\xA1\x2A\x2A\x2A\x2A\x83\x78\x2A\x00\x74\x2A\xA1\x2A\x2A\x2A\x2A\x8B\x08"
+                // A1 ? ? ? ? 83 78 ? 00 74 ? A1 ? ? ? ? 8B 08
             }
 
             "SV_DetermineUpdateType positive propcount block"
@@ -217,9 +217,9 @@
                 "signature" "SV_DetermineUpdateType props changed call"
             }
 
-            "SV_DetermineUpdateType positive propcount check"
+            "SV_DetermineUpdateType VCR print check"
             {
-                "signature" "SV_DetermineUpdateType positive propcount check"
+                "signature" "SV_DetermineUpdateType VCR print check"
             }
 
             "SV_DetermineUpdateType positive propcount block"
