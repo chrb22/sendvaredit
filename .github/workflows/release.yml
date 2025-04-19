@@ -1,0 +1,71 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - v**
+
+jobs:
+  build-extension:
+    uses: ./.github/workflows/ci-ext.yml
+
+  release:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    needs: [build-extension]
+
+    steps:
+    - run: sudo apt-get install -y tree
+
+    - name: Download Linux release
+      uses: actions/download-artifact@v4
+      with:
+        name: sendvaredit_Linux
+        path: sendvaredit_linux
+
+    - name: Download Windows release
+      uses: actions/download-artifact@v4
+      with:
+        name: sendvaredit_Windows
+        path: sendvaredit_windows
+
+    - name: Prepare archives
+      run: |
+        cd sendvaredit_linux
+        tar -czf sendvaredit_linux.tar.gz *
+        cd ../sendvaredit_windows
+        zip -r sendvaredit_windows.zip .
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+          tag_name: ${{ github.ref_name }}
+          release_name: sendvaredit ${{ github.ref_name }}
+          body: |
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+
+    - name: Upload Linux release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./sendvaredit_linux/sendvaredit_linux.tar.gz
+        asset_name: sendvaredit${{ github.ref_name }}_linux.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Windows release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./sendvaredit_windows/sendvaredit_windows.zip
+        asset_name: sendvaredit${{ github.ref_name }}_windows.zip
+        asset_content_type: application/zip
