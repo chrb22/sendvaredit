@@ -1,0 +1,164 @@
+name: Build Artifact
+
+on:
+  workflow_call:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [
+          { name: ubuntu-20.04, os: ubuntu-latest, containerImage: 'ubuntu:20.04', cc: clang-8, cxx: clang++-8 },
+          { name: windows-2019, os: windows-2019, cc: msvc },
+        ]
+
+    name: ${{ matrix.platform.name }} - ${{ matrix.platform.cc }}
+    runs-on: ${{ matrix.platform.os }}
+    container: ${{ matrix.platform.containerImage }}
+
+    env:
+      # We currently only support tf2
+      SDKS: '["tf2"]'
+      MMSOURCE_VERSION: '1.12'
+      SOURCEMOD_VERSION: '1.12'
+      CACHE_PATH: 'cache'
+      IN_CONTAINER: ${{ matrix.platform.containerImage != '' }}
+      PYTHON_VERSION: '3.8'
+
+    steps:
+      - name: Install Linux container dependencies
+        if: startsWith(runner.os, 'Linux') && env.IN_CONTAINER == 'true'
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
+          apt-get install -y --no-install-recommends \
+            sudo \
+            git \
+            curl \
+            wget \
+            zstd \
+            build-essential \
+            software-properties-common
+
+      - uses: actions/checkout@v4
+        name: Repository checkout
+        with:
+          fetch-depth: 0
+          submodules: true
+          path: sendvaredit
+
+      - uses: actions/checkout@v4
+        name: Sourcemod checkout
+        with:
+          repository: alliedmodders/sourcemod
+          ref: ${{ env.SOURCEMOD_VERSION }}-dev
+          submodules: true
+          path: ${{ env.CACHE_PATH }}/sourcemod
+      
+      - uses: actions/checkout@v4
+        name: Metamod-Source checkout
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ env.MMSOURCE_VERSION }}-dev
+          path: ${{ env.CACHE_PATH }}/metamod
+
+      - uses: actions/checkout@v4
+        name: AMBuild checkout
+        with:
+          repository: alliedmodders/ambuild
+          ref: master
+          path: ${{ env.CACHE_PATH }}/ambuild
+
+      - uses: actions/checkout@v4
+        name: Checkout TF2 SDK
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: tf2
+          path: ${{ env.CACHE_PATH }}/hl2sdk-tf2
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        if: ${{ !(startsWith( runner.os, 'Linux' ) && env.IN_CONTAINER == 'true') }}
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      # The Setup Python action will fetch from a cached build of Python that is
+      # built on newer distros which are not guaranteed to be compatible with older ones.
+      # https://github.com/actions/setup-python/blob/main/docs/advanced-usage.md#using-setup-python-with-a-self-hosted-runner
+      - name: Setup Python ${{ env.PYTHON_VERSION }} (Container)
+        if: startsWith( runner.os, 'Linux' ) && env.IN_CONTAINER == 'true'
+        shell: bash
+        run: |
+          sudo apt-get install -y --no-install-recommends python3-pip
+          python3 -m pip install packaging
+
+          if python3 -c \
+            'import sys; from packaging.version import parse; exit(0) if parse(".".join(map(str, sys.version_info[:2]))) < parse("${{ env.PYTHON_VERSION }}") else exit(1)'; \
+            then
+
+            sudo add-apt-repository ppa:deadsnakes/ppa
+            sudo apt update
+
+            sudo apt install -y --no-install-recommends \
+              python${{ env.PYTHON_VERSION }} \
+              python${{ env.PYTHON_VERSION }}-dev \
+              python${{ env.PYTHON_VERSION }}-distutils
+
+            curl -sS https://bootstrap.pypa.io/get-pip.py | python${{ env.PYTHON_VERSION }}
+          fi
+
+          ln -sf /usr/bin/python${{ env.PYTHON_VERSION }} /usr/local/bin/python
+
+          python --version
+          pip --version
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Setup AMBuild
+        working-directory: ${{ env.CACHE_PATH }}
+        run: |
+          pip install ./ambuild
+
+      - name: Linux dependencies
+        if: startsWith(runner.os, 'Linux')
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib g++-multilib libstdc++6 lib32stdc++6 \
+            libc6-dev libc6-dev-i386 linux-libc-dev \
+            linux-libc-dev:i386 lib32z1-dev ${{ matrix.platform.cc }}
+
+      - name: Select clang compiler
+        if: startsWith(runner.os, 'Linux')
+        run: |
+          echo "CC=${{ matrix.platform.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.platform.cxx }}" >> $GITHUB_ENV
+          ${{ matrix.platform.cc }} --version
+          ${{ matrix.platform.cxx }} --version
+
+      - name: Build
+        working-directory: sendvaredit
+        shell: bash
+        run: |
+          mkdir build
+          cd build
+          python ../configure.py --enable-optimize --sdks=${{ join(fromJSON(env.SDKS)) }} \
+            --mms-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/metamod" \
+            --hl2sdk-root="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}" \
+            --sm-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod" \
+            --hl2sdk-manifest-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod/hl2sdk-manifests" \
+            --targets=x86
+          ambuild
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendvaredit_${{ runner.os }}
+          path: sendvaredit/build/package
