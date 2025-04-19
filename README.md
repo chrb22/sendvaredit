@@ -3,6 +3,7 @@ A SourceMod extension that allows you to manipulate the sent values of networkab
 
 ## Installing
 Extract/copy the files into the game folder.
+
 Currently the extension only supports 32-bit TF2, but it can in idea work with other games by expanding the gamedata.
 
 ## Usage
