@@ -4,18 +4,6 @@
     {
         "Offsets"
         {
-            "CBaseServer::WriteDeltaEntities size"
-            {
-                "linux"     "0x17cf"
-                "windows"   "0x7df"
-            }
-
-            "CBaseServer::WriteDeltaEntities bp client"
-            {
-                "linux"     "0xc"
-                "windows"   "0x8"
-            }
-
             "CEntityWriteInfo entity"
             {
                 "linux"     "0x18"
@@ -240,11 +228,6 @@
             "SendTable_WritePropList loop continue"
             {
                 "signature" "SendTable_WritePropList loop continue"
-            }
-
-            "CBaseServer::WriteDeltaEntities"
-            {
-                "signature" "CBaseServer::WriteDeltaEntities"
             }
 
             "&g_PropTypeFns"
