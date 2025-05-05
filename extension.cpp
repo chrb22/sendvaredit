@@ -38,12 +38,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <map>
 
 #include <safetyhook.hpp>
 
 #include <sm_namehashset.h>
+#include <ISDKHooks.h>
 
 #include <tier1/bitbuf.h>
 #include <eiface.h>
@@ -58,32 +60,6 @@ SendVarEdit g_SendVarEdit;		/**< Global singleton for extension's main interface
 
 SMEXT_LINK(&g_SendVarEdit);
 
-class EditBuffer
-{
-    std::vector<uint8_t> buffer;
-
-public:
-    EditBuffer() {};
-
-    void* reserve(size_t bytes)
-    {
-        size_t size = buffer.size();
-        buffer.resize(size + bytes);
-        return &buffer[size];
-    }
-
-    template<typename T>
-    const T* push(const T &object)
-    {
-        T* buffer = (T*)reserve(sizeof(T));
-        *buffer = object;
-        return buffer;
-    }
-
-    void clear() { buffer.clear(); }
-};
-EditBuffer g_editbuffer;
-
 enum EditAction
 {
     SET,
@@ -91,64 +67,186 @@ enum EditAction
     OMIT,
 };
 
-struct EditInfo
+class Variant
+{
+public:
+    DVariant variant;
+    const std::string string;
+
+    Variant(DVariant variant)
+        : variant(variant), string()
+    {
+    }
+
+    Variant(const char* string)
+        : string(string)
+    {
+        this->variant.m_Type = DPT_String;
+        this->variant.m_pString=this->string.c_str();
+    }
+};
+using SharedVariant = std::shared_ptr<Variant>;
+
+struct Edit
 {
     EditAction action;
     int priority;
     int propindex;
     const SendProp* prop;
-    const DVariant* var;
+    const SharedVariant variant;
 };
+using SharedEdit = std::shared_ptr<Edit>;
 
 class EditEntry
 {
 public:
-    EditEntry(int entity, int client)
-        : entity(entity), client(client)
-    {
-        edits.reserve(8);
-        has_setter = false;
-    }
+    std::vector<SharedEdit> edits{};
+    bool has_setter = false;
 
-    int entity;
-    int client;
-    std::vector<EditInfo> edits;
-    bool has_setter;
-};
-
-class EditList {
-private:
-    int entity;
-    uint8_t indices[256];
-    std::vector<EditEntry> entries;
+    uint8_t client;
+    uint16_t entity;
 
 public:
-    EditList(int entity) : entity(entity)
+    EditEntry(uint8_t client, uint16_t entity)
+        : client(client), entity(entity)
     {
-        entries.reserve(64);
-        std::fill(indices, indices + 256, 0xFF);
-    }
-
-    inline int GetEntity() const { return entity; }
-
-    inline EditEntry* GetEntry(int client)
-    {
-        return indices[client] != 0xFF ? &entries[indices[client]] : nullptr;
-    }
-
-    EditEntry* AddOrModifyEntry(int client)
-    {
-        if (indices[client] != 0xFF)
-            return &entries[indices[client]];
-
-        indices[client] = entries.size();
-        entries.push_back(EditEntry(entity, client));
-        return &entries.back();
+        edits.reserve(8);
     }
 };
-std::vector<EditList> g_editlists;
 
-int g_editindices[MAX_EDICTS] = {-1};
+class EntryList : public IClientListener, public ISMEntityListener
+{
+private:
+    class ClientEntryList
+    {
+    public:
+        std::vector<EditEntry> entries{};
+    };
+
+    class EntityEntryLookup
+    {
+    public:
+        uint16_t entity;
+
+        uint8_t num_clients = 0;
+        uint16_t indices[256];
+
+    public:
+        EntityEntryLookup(uint16_t entity)
+            : entity(entity)
+        {
+            std::fill(std::begin(indices), std::end(indices), 0xFF);
+        }
+    };
+
+private:
+    ClientEntryList lists[256]{};
+    std::vector<EntityEntryLookup> lookups{};
+    int indices[MAX_EDICTS];
+
+public:
+    virtual void OnClientDisconnecting(int client) override
+    {
+        Clear(client);
+    }
+
+    virtual void OnEntityDestroyed(CBaseEntity* entity) override
+    {
+        int index = gamehelpers->ReferenceToIndex(gamehelpers->EntityToReference(entity));
+        if (!( 0 < index && index < MAX_EDICTS ))
+            return;
+
+        if (indices[index] == -1)
+            return;
+
+        EntityEntryLookup &lookup = lookups[indices[index]];
+
+        lookup = std::move(lookups.back());
+        lookups.pop_back();
+
+        indices[lookup.entity] = indices[index];
+        indices[index] = -1;
+    }
+
+private:
+    void RemoveLookup(uint8_t client, uint16_t entity)
+    {
+        if (indices[entity] == -1)
+            return;
+
+        EntityEntryLookup &lookup = lookups[indices[entity]];
+
+        if (lookup.indices[client] == 0xFF)
+            return;
+
+        lookup.indices[client] = 0xFF;
+        lookup.num_clients--;
+
+        if (lookup.num_clients > 0)
+            return;
+
+        lookup = std::move(lookups.back());
+        lookups.pop_back();
+
+        indices[lookup.entity] = indices[entity];
+        indices[entity] = -1;
+    }
+
+public:
+    EntryList()
+    {
+        std::fill(std::begin(indices), std::end(indices), -1);
+    }
+
+    EditEntry* Get(uint8_t client, uint16_t entity)
+    {
+        if (indices[entity] == -1)
+            return nullptr;
+
+        EntityEntryLookup* lookup = &lookups[indices[entity]];
+
+        if (lookup->indices[client] == 0xFF)
+            return nullptr;
+
+        EditEntry* entry = &lists[client].entries[lookup->indices[client]];
+
+        return entry;
+    }
+
+    EditEntry* AddOrModify(uint8_t client, uint16_t entity)
+    {
+        EntityEntryLookup* lookup;
+        if (indices[entity] == -1) {
+            lookup = &lookups.emplace_back(entity);
+            indices[entity] = lookups.size() - 1;
+        }
+        else {
+            lookup = &lookups[indices[entity]];
+        }
+
+        EditEntry* entry;
+        if (lookup->indices[client] == 0xFF) {
+            entry = &lists[client].entries.emplace_back(client, entity);
+            lookup->indices[client] = lists[client].entries.size() - 1;
+            lookup->num_clients++;
+        }
+        else {
+            entry = &lists[client].entries[lookup->indices[client]];
+        }
+
+        return entry;
+    }
+
+    void Clear(uint8_t client)
+    {
+        ClientEntryList &list = lists[client];
+        for (const EditEntry &entry : list.entries)
+            RemoveLookup(client, entry.entity);
+
+        list.entries.clear();
+    }
+};
+EntryList g_entrylist;
 
 
 
@@ -589,9 +687,8 @@ struct Points_SendTable_WritePropList
 
 struct PropTypeFns
 {
-    void (*Encode)(void* _struct, DVariant* var, SendProp* prop, bf_write* buffer, int entity);
-    void* other[7];
-    void (*SkipProp)(SendProp* prop, bf_read* buffer);
+    void (*Encode)(const unsigned char* object, const DVariant* variant, const SendProp* prop, bf_write* buffer, int entity);
+    void* other[8];
 };
 
 struct Struct_CSendTablePrecalc
@@ -685,17 +782,20 @@ class SendVarTypeHandler : public IHandleTypeDispatch
 public:
     virtual void OnHandleDestroy(HandleType_t type, void* object) override
     {
+        SharedVariant* variant = (SharedVariant*)object;
+        delete variant;
     }
 };
 SendVarTypeHandler g_SendVarTypeHandler;
 
 std::vector<Handle_t> g_editdatahandles;
 
-Handle_t CreateSendVarHandle(IPluginContext* pContext, const DVariant &var)
+Handle_t CreateSendVarHandle(IPluginContext* pContext, Variant &&variant)
 {
+    SharedVariant shared = std::make_shared<Variant>(std::move(variant));
     Handle_t handle = handlesys->CreateHandle(
         g_SendVarType,
-        (void*)g_editbuffer.push(var),
+        (void*)new SharedVariant(shared),
         pContext->GetIdentity(),
         myself->GetIdentity(),
         nullptr
@@ -706,17 +806,17 @@ Handle_t CreateSendVarHandle(IPluginContext* pContext, const DVariant &var)
     return handle;
 }
 
-const DVariant* ReadSendVarHandle(IPluginContext* pContext, Handle_t handle)
+const SharedVariant* ReadSendVarHandle(IPluginContext* pContext, Handle_t handle)
 {
-    const DVariant* var = nullptr;
+    const SharedVariant* variant = nullptr;
     HandleSecurity security(nullptr, myself->GetIdentity());
-    HandleError error = handlesys->ReadHandle(handle, g_SendVarType, &security, (void**)&var);
+    HandleError error = handlesys->ReadHandle(handle, g_SendVarType, &security, (void**)&variant);
     if (error != HandleError_None) {
         pContext->ThrowNativeError("Invalid sendvar data handle %x (error %d)", handle, error);
         return nullptr;
     }
 
-    return var;
+    return variant;
 }
 
 // Handle SendVarInt(any value)
@@ -728,7 +828,7 @@ cell_t smn_SendVarInt(IPluginContext* pContext, const cell_t* params)
     var.m_Type = DPT_Int;
     var.m_Int = value;
 
-    return CreateSendVarHandle(pContext, var);
+    return CreateSendVarHandle(pContext, Variant(var));
 }
 
 // SendVarFloat(float value)
@@ -740,7 +840,7 @@ cell_t smn_SendVarFloat(IPluginContext* pContext, const cell_t* params)
     var.m_Type = DPT_Float;
     var.m_Float = value;
 
-    return CreateSendVarHandle(pContext, var);
+    return CreateSendVarHandle(pContext, Variant(var));
 }
 
 // Handle SendVarVector(const float vec[3])
@@ -758,7 +858,7 @@ cell_t smn_SendVarVector(IPluginContext* pContext, const cell_t* params)
     for (int i = 0; i < 3; i++)
         var.m_Vector[i] = vec[i];
 
-    return CreateSendVarHandle(pContext, var);
+    return CreateSendVarHandle(pContext, Variant(var));
 }
 
 // Handle SendVarVectorXY(const float vec[2])
@@ -776,7 +876,7 @@ cell_t smn_SendVarVectorXY(IPluginContext* pContext, const cell_t* params)
     for (int i = 0; i < 2; i++)
         var.m_Vector[i] = vec[i];
 
-    return CreateSendVarHandle(pContext, var);
+    return CreateSendVarHandle(pContext, Variant(var));
 }
 
 // Handle SendVarString(const char[] string)
@@ -785,15 +885,7 @@ cell_t smn_SendVarString(IPluginContext* pContext, const cell_t* params)
     char* sp_string;
     pContext->LocalToString(params[1], &sp_string);
 
-    size_t length = strlen(sp_string);
-    char* string = (char*)g_editbuffer.reserve(length + 1);
-    memcpy(string, sp_string, length + 1);
-
-    DVariant var;
-    var.m_Type = DPT_String;
-    var.m_pString = string;
-
-    return CreateSendVarHandle(pContext, var);
+    return CreateSendVarHandle(pContext, Variant(sp_string));
 }
 
 
@@ -906,7 +998,7 @@ bool FindEntitySendPropInfo(IPluginContext* pContext, int entref, const char* pr
     return true;
 }
 
-void AddSendVarEdit(EditAction action, int entref, int client, int propindex, const SendProp* prop, const DVariant* var, int priority)
+void AddSendVarEdit(int entref, int client, SharedEdit &edit)
 {
     if (client == -1) {
         int maxclients = playerhelpers->GetMaxClients();
@@ -915,26 +1007,17 @@ void AddSendVarEdit(EditAction action, int entref, int client, int propindex, co
             if (!player->IsConnected())
                 continue;
 
-            AddSendVarEdit(action, entref, client, propindex, prop, var, priority);
+            AddSendVarEdit(entref, client, edit);
         }
 
         return;
     }
 
-    int index = g_editindices[entref];
-    if (index == -1) {
-        index = g_editlists.size();
-        g_editlists.push_back(EditList(entref));
-        g_editindices[entref] = index;
-    }
+    EditEntry* entry = g_entrylist.AddOrModify(client, entref);
 
-    EditList &list = g_editlists[index];
-    EditEntry* entry = list.AddOrModifyEntry(client);
+    entry->edits.push_back(edit);
 
-    EditInfo info = { action, priority, propindex, prop, var };
-    entry->edits.push_back(info);
-
-    if (action == EditAction::SET)
+    if (edit->action == EditAction::SET)
         entry->has_setter = true;
 }
 
@@ -967,23 +1050,24 @@ cell_t smn_SetSendVar(IPluginContext* pContext, const cell_t* params)
     if (!FindEntitySendPropInfo(pContext, entref, propname, &info))
         return 0;
 
-    const DVariant* var = ReadSendVarHandle(pContext, handle);
-    if (!var)
+    const SharedVariant* variant = ReadSendVarHandle(pContext, handle);
+    if (!variant)
         return 0;
 
     const char* typenames[] = { "int", "float", "vector", "vector XY", "string", "array", "data table" };
-    if (info.prop->GetType() != var->m_Type) {
+    if (info.prop->GetType() != (*variant)->variant.m_Type) {
         return pContext->ThrowNativeError(
             "SendProp %s type is not %s ([%d,%d] != %d)",
             propname,
-            typenames[var->m_Type],
+            typenames[(*variant)->variant.m_Type],
             info.prop->GetType(),
             info.prop->m_nBits,
-            var->m_Type
+            (*variant)->variant.m_Type
         );
     }
 
-    AddSendVarEdit(EditAction::SET, entref, client, info.propindex, info.prop, var, priority);
+    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::SET, priority, info.propindex, info.prop, *variant});
+    AddSendVarEdit(entref, client, edit);
 
     return 0;
 }
@@ -1005,23 +1089,24 @@ cell_t smn_ReplaceSendVar(IPluginContext* pContext, const cell_t* params)
     if (!FindEntitySendPropInfo(pContext, entref, propname, &info))
         return 0;
 
-    const DVariant* var = ReadSendVarHandle(pContext, handle);
-    if (!var)
+    const SharedVariant* variant = ReadSendVarHandle(pContext, handle);
+    if (!variant)
         return 0;
 
     const char* typenames[] = { "int", "float", "vector", "vector XY", "string", "array", "data table" };
-    if (info.prop->GetType() != var->m_Type) {
+    if (info.prop->GetType() != (*variant)->variant.m_Type) {
         return pContext->ThrowNativeError(
             "SendProp %s type is not %s ([%d,%d] != %d)",
             propname,
-            typenames[var->m_Type],
+            typenames[(*variant)->variant.m_Type],
             info.prop->GetType(),
             info.prop->m_nBits,
-            var->m_Type
+            (*variant)->variant.m_Type
         );
     }
 
-    AddSendVarEdit(EditAction::REPLACE, entref, client, info.propindex, info.prop, var, priority);
+    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::REPLACE, priority, info.propindex, info.prop, *variant});
+    AddSendVarEdit(entref, client, edit);
 
     return 0;
 }
@@ -1042,7 +1127,8 @@ cell_t smn_OmitSendVar(IPluginContext* pContext, const cell_t* params)
     if (!FindEntitySendPropInfo(pContext, entref, propname, &info))
         return 0;
 
-    AddSendVarEdit(EditAction::OMIT, entref, client, info.propindex, info.prop, nullptr, priority);
+    SharedEdit empty;
+    AddSendVarEdit(entref, client, empty);
 
     return 0;
 }
@@ -1142,10 +1228,8 @@ EditEntry* HookDiscoverEntry(CEntityWriteInfo* entitywriteinfo)
 {
     int entity = Context::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.entity);
 
-    if (!( 0 < entity && (size_t)entity < sizeof(g_editindices) ) || g_editindices[entity] == -1)
+    if (!( 0 < entity && entity < MAX_EDICTS ))
         return nullptr;
-
-    EditList* list = &g_editlists[g_editindices[entity]];
 
     int client = Context::read<int>(entitywriteinfo, g_gameinfo.struct_EWI.client);
 
@@ -1153,7 +1237,7 @@ EditEntry* HookDiscoverEntry(CEntityWriteInfo* entitywriteinfo)
     if (client < 0 || client >= 256)
         return nullptr;
 
-    return list->GetEntry(client);
+    return g_entrylist.Get(client, entity);
 }
 
 // store entry address at the very end of the output buffer
@@ -1239,19 +1323,20 @@ void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inp
     }
 
     // might as well sort the edits here where it is potentially threaded
-    std::vector<EditInfo> &edits = entry->edits;
-    std::sort(
+    std::vector<SharedEdit> &edits = entry->edits;
+    std::reverse(edits.begin(), edits.end()); // use latest edits
+    std::stable_sort(
         edits.begin(),
         edits.end(),
-        [](const EditInfo &a, const EditInfo &b) {
-            return a.propindex < b.propindex || (a.propindex == b.propindex && a.priority > b.priority);
+        [](const SharedEdit &a, const SharedEdit &b) {
+            return a->propindex < b->propindex || (a->propindex == b->propindex && a->priority > b->priority);
         }
     );
     edits.erase(
         std::unique(
             edits.begin(),
             edits.end(),
-            [](const EditInfo &a, const EditInfo &b) { return a.propindex == b.propindex; }
+            [](const SharedEdit &a, const SharedEdit &b) { return a->propindex == b->propindex; }
         ),
         edits.end()
     );
@@ -1260,18 +1345,18 @@ void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inp
     int length = 0;
     int customlist[MAX_DATATABLE_PROPS];
     size_t io = 0, ic = 0;
-    int no = propindexlist[io], nc = edits[ic].propindex;
+    int no = propindexlist[io], nc = edits[ic]->propindex;
     while (io < (size_t)propindexlistlength || ic < edits.size()) {
         // add propindex if one was set
         if (nc < no) {
-            if (edits[ic].action == EditAction::SET)
+            if (edits[ic]->action == EditAction::SET)
                 customlist[length++] = nc;
 
-            nc = ++ic < edits.size() ? edits[ic].propindex : MAX_DATATABLE_PROPS;
+            nc = ++ic < edits.size() ? edits[ic]->propindex : MAX_DATATABLE_PROPS;
         }
         // add propindex according to action
         else if (nc == no) {
-            switch (edits[ic].action) {
+            switch (edits[ic]->action) {
                 case EditAction::SET:
                 case EditAction::REPLACE:
                     customlist[length++] = nc;
@@ -1281,7 +1366,7 @@ void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inp
                     break;
             }
 
-            nc = ++ic < edits.size() ? edits[ic].propindex : MAX_DATATABLE_PROPS;
+            nc = ++ic < edits.size() ? edits[ic]->propindex : MAX_DATATABLE_PROPS;
             no = ++io < (size_t)propindexlistlength ? propindexlist[io] : MAX_DATATABLE_PROPS;
         }
         // add propindex from original list
@@ -1322,15 +1407,15 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     // smutils->LogMessage(myself, "edit: prop = %d, %s", propindex, prop->GetName());
 
     // search for the current propindex in the entry edits list
-    const EditInfo* info = nullptr;
-    for (const EditInfo &ei : entry->edits) {
-        if (ei.propindex == propindex) {
-            info = &ei;
+    const Edit* edit = nullptr;
+    for (const SharedEdit &e : entry->edits) {
+        if (e->propindex == propindex) {
+            edit = &*e;
             break;
         }
     }
 
-    if (!info)
+    if (!edit)
         return;
 
     // const char* string = ((DVariant*)(info->var))->ToString();
@@ -1355,7 +1440,7 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
         case DPT_Vector:
         case DPT_VectorXY:
         case DPT_String:
-            g_gameinfo.proptypefns[prop->m_Type].Encode(nullptr, (DVariant*)info->var, prop, output, entry->entity);
+            g_gameinfo.proptypefns[prop->m_Type].Encode(nullptr, &edit->variant->variant, prop, output, entry->entity);
             break;
         // case DPT_Array:
         //     break;
@@ -1367,11 +1452,15 @@ void MidHook_SendTable_WritePropList_BreakCondition(safetyhook::Context &registe
     context.ip() = g_gameinfo.points_WPL.loop_continue;
 }
 
+std::vector<uint8_t> g_clienttransmits;
+
 IForward* g_Forward_Post_OnCheckTransmit;
 
 void Hook_CheckTransmit(CCheckTransmitInfo* pInfo, const unsigned short* pEdictIndices, int nEdicts)
 {
     int client = gamehelpers->IndexOfEdict(pInfo->m_pClientEnt);
+
+    g_clienttransmits.push_back(client);
 
     Handle_t handle = handlesys->CreateHandle(
         g_TransmitBitVecType,
@@ -1407,19 +1496,20 @@ public:
 
         g_Hook_CGameServer__SendClientMessages.thiscall(this, b);
 
-        if (g_Forward_Post_OnSendClientMessages->GetFunctionCount())
-            g_Forward_Post_OnSendClientMessages->Execute();
-
         // free handles
         HandleSecurity security(nullptr, myself->GetIdentity());
         for (Handle_t handle : g_editdatahandles)
             handlesys->FreeHandle(handle, &security);
         g_editdatahandles.clear();
 
-        // clear edits
-        std::fill(g_editindices, g_editindices + MAX_EDICTS, -1);
-        g_editlists.clear();
-        g_editbuffer.clear();
+        // clear client variants and entries
+        for (uint8_t client : g_clienttransmits)
+            g_entrylist.Clear(client);
+
+        g_clienttransmits.clear();
+
+        if (g_Forward_Post_OnSendClientMessages->GetFunctionCount())
+            g_Forward_Post_OnSendClientMessages->Execute();
 
         return;
     }
@@ -1447,7 +1537,7 @@ bool SendVarEdit::SDK_OnMetamodLoad(ISmmAPI* ismm, char* error, size_t maxlen, b
 
 bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
 {
-    std::fill(g_editindices, g_editindices + MAX_EDICTS, -1);
+    sharesys->AddDependency(myself, "sdkhooks.ext", true, true);
 
     // get info about what registers and stack offsets function variables are stored at
     gameconfs->AddUserConfigHook("Variables", &g_variables);
@@ -1580,8 +1670,15 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     return true;
 }
 
+ISDKHooks* g_sdkhooks;
+
 void SendVarEdit::SDK_OnAllLoaded()
 {
+    SM_GET_LATE_IFACE(SDKHOOKS, g_sdkhooks);
+
+    playerhelpers->AddClientListener(&g_entrylist);
+    g_sdkhooks->AddEntityListener(&g_entrylist);
+
     g_Forward_Pre_OnSendClientMessages = forwards->CreateForward("OnSendClientMessages", ET_Ignore, 0, nullptr);
     g_Forward_Post_OnSendClientMessages = forwards->CreateForward("OnSendClientMessagesPost", ET_Ignore, 0, nullptr);
 
@@ -1615,6 +1712,12 @@ void SendVarEdit::SDK_OnAllLoaded()
     sharesys->AddNatives(myself, MyNatives);
 }
 
+bool SendVarEdit::QueryRunning(char *error, size_t maxlength)
+{
+    SM_CHECK_IFACE(SDKHOOKS, g_sdkhooks);
+    return true;
+}
+
 void SendVarEdit::SDK_OnUnload()
 {
     if (g_TransmitBitVecType)
@@ -1634,6 +1737,14 @@ void SendVarEdit::SDK_OnUnload()
 
     if (g_Forward_Post_OnSendClientMessages)
         forwards->ReleaseForward(g_Forward_Post_OnSendClientMessages);
+
+    // SDKHooks can get unloaded before SendVarEdit on server exit, so need this to check if it is still loaded
+    g_sdkhooks = nullptr;
+    SM_GET_LATE_IFACE(SDKHOOKS, g_sdkhooks);
+    if (g_sdkhooks)
+        g_sdkhooks->RemoveEntityListener(&g_entrylist);
+
+    playerhelpers->RemoveClientListener(&g_entrylist);
 
     if (g_MidHook_SendTable_WritePropList_BreakCondition.enabled())
         g_MidHook_SendTable_WritePropList_BreakCondition = {};

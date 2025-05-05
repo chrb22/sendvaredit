@@ -79,44 +79,47 @@ stock float[] SendProxyQAngles(const float qangles[3])
 native int SendProxyEHandle(int entity);
 
 /**
- * Stores an integer value to be networked. The handle is freed when client updates are completed.
+ * Stores an integer value to be networked.
+ * The handle is freed at the end of the current frame.
  *
  * @param value             Value to set.
  */
 native Handle SendVarInt(any value);
 
 /**
- * Stores a float value to be networked. The handle is freed when client updates are completed.
+ * Stores a float value to be networked.
+ * The handle is freed at the end of the current frame.
  *
  * @param value             Value to set.
  */
 native Handle SendVarFloat(float value);
 
 /**
- * Stores a vector to be networked. The handle is freed when client updates are completed.
+ * Stores a vector to be networked.
+ * The handle is freed at the end of the current frame.
  *
  * @param vec               Vector to set.
  */
 native Handle SendVarVector(const float vec[3]);
 
 /**
- * Stores a 2D vector to be networked. The handle is freed when client updates are completed.
+ * Stores a 2D vector to be networked.
+ * The handle is freed at the end of the current frame.
  *
  * @param vec               Vector to set.
  */
 native Handle SendVarVectorXY(const float vec[2]);
 
 /**
- * Stores a string to be networked. The handle is freed when client updates are completed.
+ * Stores a string to be networked.
+ * The handle is freed at the end of the current frame.
  *
  * @param string            String to set.
  */
 native Handle SendVarString(const char[] string);
 
 /**
- * Sets the networked value of an entity's property and ensures it is included in client updates for the current frame.
- * Does not guarantee that the client(s) will receive an update on the current frame and does not remember the call for later frames.
- * Use `OnCheckTransmit` to know when a client is getting sent an update and use the function inside there to ensure the client receives the value.
+ * Sets the networked value of an entity's property next time the client is sent an update.
  *
  * @param entity            Entity/edict index.
  * @param client            Player's index. Use -1 to target everyone.
@@ -127,7 +130,7 @@ native Handle SendVarString(const char[] string);
 native void SetSendVar(int entity, int client, const char[] prop, Handle value, int priority = 0)
 
 /**
- * Replace the networked value of an entity's property if it's going to be sent for the current frame.
+ * Replace the networked value of an entity's property next time the client is sent an update.
  *
  * @param entity            Entity/edict index.
  * @param client            Player's index. Use -1 to target everyone.
@@ -138,7 +141,7 @@ native void SetSendVar(int entity, int client, const char[] prop, Handle value, 
 native void ReplaceSendVar(int entity, int client, const char[] prop, Handle value, int priority = 0)
 
 /**
- * Omits an entity's property from being sent for the current frame.
+ * Prevents an entity's property from being included next time the client is sent an update.
  *
  * @param entity            Entity/edict index.
  * @param client            Player's index. Use -1 to target everyone.
