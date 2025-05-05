@@ -36,9 +36,12 @@
  * @brief Implement extension code here.
  */
 
-#include <string>
 #include <cstddef>
+#include <cstdint>
+#include <string>
 #include <map>
+
+#include <safetyhook.hpp>
 
 #include <sm_namehashset.h>
 
@@ -50,8 +53,6 @@
 #include <dt_common.h>
 #include <dt_send.h>
 #include <edict.h>
-
-#include <safetyhook.hpp>
 
 SendVarEdit g_SendVarEdit;		/**< Global singleton for extension's main interface */
 
