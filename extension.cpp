@@ -156,7 +156,7 @@ int g_editindices[MAX_EDICTS] = {-1};
 struct RegisterInfo { const char* name;  uint8_t offset; };
 #define REG_INFO(NAME) { #NAME, (uint8_t)offsetof(safetyhook::Context, NAME) }
 RegisterInfo g_registers[] {
-#ifdef _x86_64
+#if SAFETYHOOK_ARCH_X86_64
     REG_INFO(xmm0),
     REG_INFO(xmm1),
     REG_INFO(xmm2),
@@ -262,7 +262,7 @@ public:
     template<typename T>
     inline T& stack(int32_t offset)
     {
-#ifdef _x86_64
+#if SAFETYHOOK_ARCH_X86_64
         return read<T>(registers.rbp, offset);
 #else
         return read<T>(registers.ebp, offset);
@@ -271,7 +271,7 @@ public:
 
     inline uintptr_t bp()
     {
-#ifdef _x86_64
+#if SAFETYHOOK_ARCH_X86_64
         return registers.rbp;
 #else
         return registers.ebp;
@@ -280,7 +280,7 @@ public:
 
     inline void*& ip()
     {
-#ifdef _x86_64
+#if SAFETYHOOK_ARCH_X86_64
         return *(void**)&registers.rip;
 #else
         return *(void**)&registers.eip;
@@ -289,7 +289,7 @@ public:
 
     inline uintptr_t& flags()
     {
-#ifdef _x86_64
+#if SAFETYHOOK_ARCH_X86_64
         return registers.rflags;
 #else
         return registers.eflags;
@@ -309,7 +309,7 @@ public:
     }
 };
 
-#ifdef _x86_64
+#if SAFETYHOOK_ARCH_X86_64
 #if defined WIN32
 #define _PLATFORM "windows64"
 #elif defined _LINUX
