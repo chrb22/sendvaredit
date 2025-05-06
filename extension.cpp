@@ -1127,8 +1127,8 @@ cell_t smn_OmitSendVar(IPluginContext* pContext, const cell_t* params)
     if (!FindEntitySendPropInfo(pContext, entref, propname, &info))
         return 0;
 
-    SharedEdit empty;
-    AddSendVarEdit(entref, client, empty);
+    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::OMIT, priority, info.propindex, info.prop, SharedVariant{}});
+    AddSendVarEdit(entref, client, edit);
 
     return 0;
 }
