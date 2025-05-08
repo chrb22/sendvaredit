@@ -1558,10 +1558,10 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
         g_variables.GetVariable("SV_DetermineUpdateType entitywriteinfo", &g_gameinfo.vars_DUT.entitywriteinfo);
         g_variables.GetVariable("SV_DetermineUpdateType propcount", &g_gameinfo.vars_DUT.propcount);
 
-        if (!gameconf->GetAddress("SV_DetermineUpdateType props changed call", &g_gameinfo.points_DUT.props_changed_call))
+        if (!gameconf->GetMemSig("SV_DetermineUpdateType props changed call", &g_gameinfo.points_DUT.props_changed_call))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType props changed call.");
 
-        if (!gameconf->GetAddress("SV_DetermineUpdateType positive propcount block", &g_gameinfo.points_DUT.propcount_positive_block))
+        if (!gameconf->GetMemSig("SV_DetermineUpdateType positive propcount block", &g_gameinfo.points_DUT.propcount_positive_block))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType positive propcount block.");
 
         g_variables.GetVariable("SendTable_WritePropList table", &g_gameinfo.vars_WPL.table);
@@ -1569,7 +1569,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
         g_variables.GetVariable("SendTable_WritePropList propindex", &g_gameinfo.vars_WPL.propindex);
         g_variables.GetVariable("SendTable_WritePropList output_lastpropindex", &g_gameinfo.vars_WPL.output_lastpropindex);
 
-        if (!gameconf->GetAddress("SendTable_WritePropList loop continue", &g_gameinfo.points_WPL.loop_continue))
+        if (!gameconf->GetMemSig("SendTable_WritePropList loop continue", &g_gameinfo.points_WPL.loop_continue))
             RETURN_ERROR("Failed to find SendTable_WritePropList loop continuation point.");
 
         if (!gameconf->GetAddress("&g_PropTypeFns", (void**)&g_gameinfo.proptypefns))
@@ -1582,7 +1582,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     // hook CGameServer::SendClientMessages to catch when the server is about to network stuff to clients
     {
         void* address;
-        if (!gameconf->GetAddress("CGameServer::SendClientMessages", &address))
+        if (!gameconf->GetMemSig("CGameServer::SendClientMessages", &address))
             RETURN_ERROR("Failed to find CGameServer::SendClientMessages.");
 
         auto function = &Hook_CGameServer::SendClientMessages;
@@ -1601,7 +1601,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     // hook SendTable_WritePropList to check for an entry
     {
         void* address;
-        if (!gameconf->GetAddress("SendTable_WritePropList", &address))
+        if (!gameconf->GetMemSig("SendTable_WritePropList", &address))
             RETURN_ERROR("Failed to find SendTable_WritePropList.");
 
         auto hook = safetyhook::InlineHook::create(address, Hook_SendTable_WritePropList);
@@ -1615,7 +1615,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     // the pointer to the entry (possibily null) will be stored at the very end of the output buffer
     {
         void* address;
-        if (!gameconf->GetAddress("SV_DetermineUpdateType start", &address))
+        if (!gameconf->GetMemSig("SV_DetermineUpdateType start", &address))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType start.");
 
         auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_Start);
@@ -1630,7 +1630,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     // also skips over a hltv cache for stv recordings if they aren't equal
     {
         void* address;
-        if (!gameconf->GetAddress("SV_DetermineUpdateType pack equality check", &address))
+        if (!gameconf->GetMemSig("SV_DetermineUpdateType pack equality check", &address))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType pack equality check.");
 
         auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_PackCheck);
@@ -1643,7 +1643,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     // create a mid-hook at the SV_DetermineUpdateType VCR print check that always passes the positive propcount check if a set edit was made
     {
         void* address;
-        if (!gameconf->GetAddress("SV_DetermineUpdateType VCR print check", &address))
+        if (!gameconf->GetMemSig("SV_DetermineUpdateType VCR print check", &address))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType VCR print check.");
 
         auto midhook = safetyhook::MidHook::create(address, MidHook_SV_DetermineUpdateType_VCRPrintCheck);
@@ -1656,7 +1656,7 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     // create a mid-hook at the SendTable_WritePropList loop break condition that skips to the continuation point if an edit was made
     {
         void* address;
-        if (!gameconf->GetAddress("SendTable_WritePropList loop break condition", &address))
+        if (!gameconf->GetMemSig("SendTable_WritePropList loop break condition", &address))
             RETURN_ERROR("Failed to find SendTable_WritePropList loop break condition.");
 
         auto midhook = safetyhook::MidHook::create(address, MidHook_SendTable_WritePropList_BreakCondition);

@@ -185,51 +185,6 @@
 
         "Addresses"
         {
-            "CGameServer::SendClientMessages"
-            {
-                "signature" "CGameServer::SendClientMessages"
-            }
-
-            "SV_DetermineUpdateType start"
-            {
-                "signature" "SV_DetermineUpdateType start"
-            }
-
-            "SV_DetermineUpdateType pack equality check"
-            {
-                "signature" "SV_DetermineUpdateType pack equality check"
-            }
-
-            "SV_DetermineUpdateType props changed call"
-            {
-                "signature" "SV_DetermineUpdateType props changed call"
-            }
-
-            "SV_DetermineUpdateType VCR print check"
-            {
-                "signature" "SV_DetermineUpdateType VCR print check"
-            }
-
-            "SV_DetermineUpdateType positive propcount block"
-            {
-                "signature" "SV_DetermineUpdateType positive propcount block"
-            }
-
-            "SendTable_WritePropList"
-            {
-                "signature" "SendTable_WritePropList"
-            }
-
-            "SendTable_WritePropList loop break condition"
-            {
-                "signature" "SendTable_WritePropList loop break condition"
-            }
-
-            "SendTable_WritePropList loop continue"
-            {
-                "signature" "SendTable_WritePropList loop continue"
-            }
-
             "&g_PropTypeFns"
             {
                 "linux"
