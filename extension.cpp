@@ -90,7 +90,7 @@ using SharedVariant = std::shared_ptr<Variant>;
 struct Edit
 {
     EditAction action;
-    int priority;
+    bool all_clients;
     int propindex;
     const SendProp* prop;
     const SharedVariant variant;
@@ -1033,7 +1033,7 @@ bool IsValidClient(IPluginContext* pContext, int client)
     return true;
 }
 
-// void SetSendVar(int entity, int client, const char[] prop, Handle value, int priority = 0)
+// void SetSendVar(int entity, int client, const char[] prop, Handle value)
 cell_t smn_SetSendVar(IPluginContext* pContext, const cell_t* params)
 {
     int entref = params[1];
@@ -1041,7 +1041,6 @@ cell_t smn_SetSendVar(IPluginContext* pContext, const cell_t* params)
     char* propname;
     pContext->LocalToString(params[3], &propname);
     Handle_t handle = params[4];
-    int priority = params[5];
 
     if (client != -1 && !IsValidClient(pContext, client))
         return 0;
@@ -1066,13 +1065,13 @@ cell_t smn_SetSendVar(IPluginContext* pContext, const cell_t* params)
         );
     }
 
-    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::SET, priority, info.propindex, info.prop, *variant});
+    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::SET, client == -1, info.propindex, info.prop, *variant});
     AddSendVarEdit(entref, client, edit);
 
     return 0;
 }
 
-// void ReplaceSendVar(int entity, int client, const char[] prop, Handle value, int priority = 0)
+// void ReplaceSendVar(int entity, int client, const char[] prop, Handle value)
 cell_t smn_ReplaceSendVar(IPluginContext* pContext, const cell_t* params)
 {
     int entref = params[1];
@@ -1080,7 +1079,6 @@ cell_t smn_ReplaceSendVar(IPluginContext* pContext, const cell_t* params)
     char* propname;
     pContext->LocalToString(params[3], &propname);
     Handle_t handle = params[4];
-    int priority = params[5];
 
     if (client != -1 && !IsValidClient(pContext, client))
         return 0;
@@ -1105,20 +1103,19 @@ cell_t smn_ReplaceSendVar(IPluginContext* pContext, const cell_t* params)
         );
     }
 
-    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::REPLACE, priority, info.propindex, info.prop, *variant});
+    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::REPLACE, client == -1, info.propindex, info.prop, *variant});
     AddSendVarEdit(entref, client, edit);
 
     return 0;
 }
 
-// void OmitSendVar(int entity, int client, const char[] prop, int priority = 0)
+// void OmitSendVar(int entity, int client, const char[] prop)
 cell_t smn_OmitSendVar(IPluginContext* pContext, const cell_t* params)
 {
     int entref = params[1];
     int client = params[2];
     char* propname;
     pContext->LocalToString(params[3], &propname);
-    int priority = params[4];
 
     if (client != -1 && !IsValidClient(pContext, client))
         return 0;
@@ -1127,7 +1124,7 @@ cell_t smn_OmitSendVar(IPluginContext* pContext, const cell_t* params)
     if (!FindEntitySendPropInfo(pContext, entref, propname, &info))
         return 0;
 
-    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::OMIT, priority, info.propindex, info.prop, SharedVariant{}});
+    SharedEdit edit = std::make_shared<Edit>(Edit{EditAction::OMIT, client == -1, info.propindex, info.prop, SharedVariant{}});
     AddSendVarEdit(entref, client, edit);
 
     return 0;
@@ -1329,7 +1326,11 @@ void Hook_SendTable_WritePropList(SendTable* sendtable, void* inputdata, int inp
         edits.begin(),
         edits.end(),
         [](const SharedEdit &a, const SharedEdit &b) {
-            return a->propindex < b->propindex || (a->propindex == b->propindex && a->priority > b->priority);
+            return (
+                (a->propindex < b->propindex) ||
+                (a->propindex == b->propindex && a->action < b->action) ||
+                (a->propindex == b->propindex && a->action == b->action && a->all_clients < b->all_clients)
+            );
         }
     );
     edits.erase(

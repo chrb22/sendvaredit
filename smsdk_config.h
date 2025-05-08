@@ -40,7 +40,7 @@
 /* Basic information exposed publicly */
 #define SMEXT_CONF_NAME			"SendVarEdit"
 #define SMEXT_CONF_DESCRIPTION	"Manipulate networked property values per client"
-#define SMEXT_CONF_VERSION		"1.3.1"
+#define SMEXT_CONF_VERSION		"1.3.2"
 #define SMEXT_CONF_AUTHOR		"ILDPRUT"
 #define SMEXT_CONF_URL			"https://github.com/chrb22/sendvaredit"
 #define SMEXT_CONF_LOGTAG		"SENDVAREDIT"

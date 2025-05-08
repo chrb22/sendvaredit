@@ -125,9 +125,8 @@ native Handle SendVarString(const char[] string);
  * @param client            Player's index. Use -1 to target everyone.
  * @param prop              Property name.
  * @param value             Value to set (get handle from SendVar[Type] functions).
- * @param priority          Priority for this edit.
  */
-native void SetSendVar(int entity, int client, const char[] prop, Handle value, int priority = 0)
+native void SetSendVar(int entity, int client, const char[] prop, Handle value)
 
 /**
  * Replace the networked value of an entity's property next time the client is sent an update.
@@ -136,9 +135,8 @@ native void SetSendVar(int entity, int client, const char[] prop, Handle value, 
  * @param client            Player's index. Use -1 to target everyone.
  * @param prop              Property name.
  * @param value             Value to set (get handle from SendVar[Type] functions).
- * @param priority          Priority for this edit.
  */
-native void ReplaceSendVar(int entity, int client, const char[] prop, Handle value, int priority = 0)
+native void ReplaceSendVar(int entity, int client, const char[] prop, Handle value)
 
 /**
  * Prevents an entity's property from being included next time the client is sent an update.
@@ -146,9 +144,8 @@ native void ReplaceSendVar(int entity, int client, const char[] prop, Handle val
  * @param entity            Entity/edict index.
  * @param client            Player's index. Use -1 to target everyone.
  * @param prop              Property name.
- * @param priority          Priority for this edit.
  */
-native void OmitSendVar(int entity, int client, const char[] prop, int priority = 0)
+native void OmitSendVar(int entity, int client, const char[] prop)
 
 public Extension __ext_sendvaredit = 
 {
