@@ -1549,14 +1549,17 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
 
     // fill out game info struct
     {
-        gameconf->GetOffset("CEntityWriteInfo entity", &g_gameinfo.struct_EWI.entity);
-        gameconf->GetOffset("CEntityWriteInfo output", &g_gameinfo.struct_EWI.output);
-        gameconf->GetOffset("CEntityWriteInfo client", &g_gameinfo.struct_EWI.client);
-        gameconf->GetOffset("CEntityWriteInfo oldpack", &g_gameinfo.struct_EWI.oldpack);
-        gameconf->GetOffset("CEntityWriteInfo newpack", &g_gameinfo.struct_EWI.newpack);
+        bool all_offsets = true;
+        bool all_variables = true;
 
-        g_variables.GetVariable("SV_DetermineUpdateType entitywriteinfo", &g_gameinfo.vars_DUT.entitywriteinfo);
-        g_variables.GetVariable("SV_DetermineUpdateType propcount", &g_gameinfo.vars_DUT.propcount);
+        all_offsets &= gameconf->GetOffset("CEntityWriteInfo entity", &g_gameinfo.struct_EWI.entity);
+        all_offsets &= gameconf->GetOffset("CEntityWriteInfo output", &g_gameinfo.struct_EWI.output);
+        all_offsets &= gameconf->GetOffset("CEntityWriteInfo client", &g_gameinfo.struct_EWI.client);
+        all_offsets &= gameconf->GetOffset("CEntityWriteInfo oldpack", &g_gameinfo.struct_EWI.oldpack);
+        all_offsets &= gameconf->GetOffset("CEntityWriteInfo newpack", &g_gameinfo.struct_EWI.newpack);
+
+        all_variables &= g_variables.GetVariable("SV_DetermineUpdateType entitywriteinfo", &g_gameinfo.vars_DUT.entitywriteinfo);
+        all_variables &= g_variables.GetVariable("SV_DetermineUpdateType propcount", &g_gameinfo.vars_DUT.propcount);
 
         if (!gameconf->GetMemSig("SV_DetermineUpdateType props changed call", &g_gameinfo.points_DUT.props_changed_call))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType props changed call.");
@@ -1564,10 +1567,10 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
         if (!gameconf->GetMemSig("SV_DetermineUpdateType positive propcount block", &g_gameinfo.points_DUT.propcount_positive_block))
             RETURN_ERROR("Failed to find SV_DetermineUpdateType positive propcount block.");
 
-        g_variables.GetVariable("SendTable_WritePropList table", &g_gameinfo.vars_WPL.table);
-        g_variables.GetVariable("SendTable_WritePropList output", &g_gameinfo.vars_WPL.output);
-        g_variables.GetVariable("SendTable_WritePropList propindex", &g_gameinfo.vars_WPL.propindex);
-        g_variables.GetVariable("SendTable_WritePropList output_lastpropindex", &g_gameinfo.vars_WPL.output_lastpropindex);
+        all_variables &= g_variables.GetVariable("SendTable_WritePropList table", &g_gameinfo.vars_WPL.table);
+        all_variables &= g_variables.GetVariable("SendTable_WritePropList output", &g_gameinfo.vars_WPL.output);
+        all_variables &= g_variables.GetVariable("SendTable_WritePropList propindex", &g_gameinfo.vars_WPL.propindex);
+        all_variables &= g_variables.GetVariable("SendTable_WritePropList output_lastpropindex", &g_gameinfo.vars_WPL.output_lastpropindex);
 
         if (!gameconf->GetMemSig("SendTable_WritePropList loop continue", &g_gameinfo.points_WPL.loop_continue))
             RETURN_ERROR("Failed to find SendTable_WritePropList loop continuation point.");
@@ -1575,8 +1578,14 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
         if (!gameconf->GetAddress("&g_PropTypeFns", (void**)&g_gameinfo.proptypefns))
             RETURN_ERROR("Failed to find g_PropTypeFns.");
 
-        gameconf->GetOffset("CSendTablePrecalc props", &g_gameinfo.struct_STP.props);
-        gameconf->GetOffset("CSendTablePrecalc propcount", &g_gameinfo.struct_STP.propcount);
+        all_offsets &= gameconf->GetOffset("CSendTablePrecalc props", &g_gameinfo.struct_STP.props);
+        all_offsets &= gameconf->GetOffset("CSendTablePrecalc propcount", &g_gameinfo.struct_STP.propcount);
+
+        if (!all_offsets)
+            RETURN_ERROR("Missing offset in gamedata offsets.");
+
+        if (!all_variables)
+            RETURN_ERROR("Missing variable in gamedata variables.");
     }
 
     // hook CGameServer::SendClientMessages to catch when the server is about to network stuff to clients
