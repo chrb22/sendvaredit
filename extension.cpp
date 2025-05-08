@@ -1538,14 +1538,14 @@ bool SendVarEdit::SDK_OnMetamodLoad(ISmmAPI* ismm, char* error, size_t maxlen, b
 
 bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
 {
-    sharesys->AddDependency(myself, "sdkhooks.ext", true, true);
-
     // get info about what registers and stack offsets function variables are stored at
     gameconfs->AddUserConfigHook("Variables", &g_variables);
 
     IGameConfig* gameconf;
-    if (!gameconfs->LoadGameConfigFile("sendvaredit", &gameconf, error, maxlength))
+    if (!gameconfs->LoadGameConfigFile("sendvaredit", &gameconf, error, maxlength)) {
+        gameconfs->RemoveUserConfigHook("Variables", &g_variables);
         return false;
+    }
 
     // fill out game info struct
     {
@@ -1676,6 +1676,8 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     }
 
     gameconfs->CloseGameConfigFile(gameconf);
+
+    sharesys->AddDependency(myself, "sdkhooks.ext", true, true);
 
     return true;
 }
