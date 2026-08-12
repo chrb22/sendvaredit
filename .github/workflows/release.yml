@@ -6,65 +6,206 @@ on:
       - v**
 
 jobs:
-  build-extension:
-    uses: ./.github/workflows/ci-ext.yml
+  build:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-26.04
+            arch: x86
+            cc: clang-22
+            cxx: clang++-22
+          - os: ubuntu-26.04
+            arch: x86_64
+            cc: clang-22
+            cxx: clang++-22
+          - os: windows-2025
+            arch: x86
+            cc: msvc
+            msvc_arch: x86
+          - os: windows-2025
+            arch: x86_64
+            cc: msvc
+            msvc_arch: x64
 
-  release:
-    permissions: write-all
-    runs-on: ubuntu-latest
-    needs: [build-extension]
+    env:
+      # We currently only support tf2
+      SDKS: '["tf2"]'
+      MMSOURCE_VERSION: '1.12'
+      SOURCEMOD_VERSION: '1.12'
+      CACHE_PATH: 'cache'
+      PYTHON_VERSION: '3.13'
 
     steps:
-    - run: sudo apt-get install -y tree
+      - uses: actions/checkout@v4
+        name: Repository checkout
+        with:
+          fetch-depth: 0
+          submodules: true
+          path: sendvaredit
 
-    - name: Download Linux release
-      uses: actions/download-artifact@v4
-      with:
-        name: sendvaredit_Linux
-        path: sendvaredit_linux
+      - uses: actions/checkout@v4
+        name: Sourcemod checkout
+        with:
+          repository: alliedmodders/sourcemod
+          ref: ${{ env.SOURCEMOD_VERSION }}-dev
+          submodules: true
+          path: ${{ env.CACHE_PATH }}/sourcemod
 
-    - name: Download Windows release
-      uses: actions/download-artifact@v4
-      with:
-        name: sendvaredit_Windows
-        path: sendvaredit_windows
+      - uses: actions/checkout@v4
+        name: Metamod-Source checkout
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ env.MMSOURCE_VERSION }}-dev
+          path: ${{ env.CACHE_PATH }}/metamod
 
-    - name: Prepare archives
-      run: |
-        cd sendvaredit_linux
-        tar -czf sendvaredit_linux.tar.gz *
-        cd ../sendvaredit_windows
-        zip -r sendvaredit_windows.zip .
+      - uses: actions/checkout@v4
+        name: AMBuild checkout
+        with:
+          repository: alliedmodders/ambuild
+          ref: master
+          path: ${{ env.CACHE_PATH }}/ambuild
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-          tag_name: ${{ github.ref_name }}
-          release_name: ${{ github.ref_name }}
-          body: |
-            ${{ github.event.head_commit.message }}
-          draft: false
-          prerelease: false
+      - uses: actions/checkout@v4
+        name: Checkout TF2 SDK
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: tf2
+          path: ${{ env.CACHE_PATH }}/hl2sdk-tf2
 
-    - name: Upload Linux release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_linux/sendvaredit_linux.tar.gz
-        asset_name: sendvaredit_${{ github.ref_name }}_linux.tar.gz
-        asset_content_type: application/gzip
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Upload Windows release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_windows/sendvaredit_windows.zip
-        asset_name: sendvaredit_${{ github.ref_name }}_windows.zip
-        asset_content_type: application/zip
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
+      - name: Setup AMBuild
+        working-directory: ${{ env.CACHE_PATH }}
+        run: |
+          pip install ./ambuild
+
+      - name: Linux dependencies
+        if: startsWith(runner.os, 'Linux')
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib g++-multilib libstdc++6 lib32stdc++6 \
+            libc6-dev libc6-dev-i386 linux-libc-dev \
+            linux-libc-dev:i386 lib32z1-dev ${{ matrix.cc }}
+
+      - name: Select clang compiler
+        if: startsWith(runner.os, 'Linux')
+        run: |
+          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          ${{ matrix.cc }} --version
+          ${{ matrix.cxx }} --version
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - name: Configure
+        shell: bash
+        working-directory: sendvaredit
+        run: |
+          mkdir build
+          cd build
+          python ../configure.py --enable-optimize --sdks=${{ join(fromJSON(env.SDKS)) }} \
+            --mms-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/metamod" \
+            --hl2sdk-root="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}" \
+            --sm-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod" \
+            --hl2sdk-manifest-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod/hl2sdk-manifests" \
+            --targets=${{ matrix.arch }}
+
+      - name: Build
+        shell: bash
+        working-directory: sendvaredit/build
+        run: |
+          if command -v ambuild >/dev/null 2>&1; then
+            ambuild
+          else
+            python -c "from ambuild2.run import cli_run; cli_run()"
+          fi
+
+      - name: Stage build output
+        shell: bash
+        run: |
+          set -e
+          case "${{ matrix.os }}" in
+            windows-*) ext=dll ;;
+            *) ext=so ;;
+          esac
+          if [ "${{ matrix.arch }}" = "x86" ]; then
+            bin="sendvaredit/build/package/addons/sourcemod/extensions/sendvaredit.ext.2.tf2.$ext"
+          else
+            bin="sendvaredit/build/package/addons/sourcemod/extensions/x64/sendvaredit.ext.2.tf2.$ext"
+          fi
+          mkdir -p dist
+          cp "$bin" "dist/sendvaredit.ext.2.tf2.$ext"
+          cp sendvaredit/build/package/addons/sourcemod/scripting/include/sendvaredit.inc dist/sendvaredit.inc
+          cp sendvaredit/build/package/addons/sourcemod/gamedata/sendvaredit.txt dist/sendvaredit.txt
+          ls -la dist
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: sendvaredit-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package Linux (tar.gz)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p pkg-linux/addons/sourcemod/extensions/x64
+          mkdir -p pkg-linux/addons/sourcemod/scripting/include
+          mkdir -p pkg-linux/addons/sourcemod/gamedata
+          cp artifacts/sendvaredit-ubuntu-26.04-x86/sendvaredit.ext.2.tf2.so pkg-linux/addons/sourcemod/extensions/sendvaredit.ext.2.tf2.so
+          cp artifacts/sendvaredit-ubuntu-26.04-x86_64/sendvaredit.ext.2.tf2.so pkg-linux/addons/sourcemod/extensions/x64/sendvaredit.ext.2.tf2.so
+          cp artifacts/sendvaredit-ubuntu-26.04-x86_64/sendvaredit.inc pkg-linux/addons/sourcemod/scripting/include/sendvaredit.inc
+          cp artifacts/sendvaredit-ubuntu-26.04-x86_64/sendvaredit.txt pkg-linux/addons/sourcemod/gamedata/sendvaredit.txt
+          tar -czf sendvaredit_${{ github.ref_name }}_linux.tar.gz -C pkg-linux .
+          ls -la sendvaredit_${{ github.ref_name }}_linux.tar.gz
+
+      - name: Package Windows (zip)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p pkg-windows/addons/sourcemod/extensions/x64
+          mkdir -p pkg-windows/addons/sourcemod/scripting/include
+          mkdir -p pkg-windows/addons/sourcemod/gamedata
+          cp artifacts/sendvaredit-windows-2025-x86/sendvaredit.ext.2.tf2.dll pkg-windows/addons/sourcemod/extensions/sendvaredit.ext.2.tf2.dll
+          cp artifacts/sendvaredit-windows-2025-x86_64/sendvaredit.ext.2.tf2.dll pkg-windows/addons/sourcemod/extensions/x64/sendvaredit.ext.2.tf2.dll
+          cp artifacts/sendvaredit-windows-2025-x86_64/sendvaredit.inc pkg-windows/addons/sourcemod/scripting/include/sendvaredit.inc
+          cp artifacts/sendvaredit-windows-2025-x86_64/sendvaredit.txt pkg-windows/addons/sourcemod/gamedata/sendvaredit.txt
+          (cd pkg-windows && zip -r ../sendvaredit_${{ github.ref_name }}_windows.zip .)
+          ls -la sendvaredit_${{ github.ref_name }}_windows.zip
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sendvaredit_${{ github.ref_name }}_linux.tar.gz
+            sendvaredit_${{ github.ref_name }}_windows.zip
