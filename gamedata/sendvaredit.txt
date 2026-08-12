@@ -239,11 +239,6 @@
                 }
                 "windows64"
                 {
-                    // SourceMod's "read" cannot resolve RIP-relative references and there is no absolute
-                    // pointer to g_PropTypeFns anywhere in the image, so this references the "Signatures"
-                    // entry that matches the raw data bytes at the table base + Encode member offset
-                    // (0x18047a3b0 in this build) with NO "read", making GetAddress return the matched
-                    // address directly.
                     "signature" "&g_PropTypeFns Encode member (windows64)"
                 }
             }
