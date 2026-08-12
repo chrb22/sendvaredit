@@ -8,42 +8,51 @@
             {
                 "linux"     "0x18"
                 "windows"   "0x18"
+                "windows64" "0x28"
             }
 
             "CEntityWriteInfo output"
             {
                 "linux"     "0x24"
                 "windows"   "0x24"
+                "windows64" "0x38"
             }
 
             "CEntityWriteInfo client"
             {
                 "linux"     "0x28"
                 "windows"   "0x28"
+                "windows64" "0x40"
             }
 
             "CEntityWriteInfo oldpack"
             {
                 "linux"     "0x2c"
                 "windows"   "0x2c"
+                "windows64" "0x48"
             }
 
             "CEntityWriteInfo newpack"
             {
                 "linux"     "0x30"
                 "windows"   "0x30"
+                "windows64" "0x50"
             }
 
             "CSendTablePrecalc props"
             {
                 "linux"     "0x2c"
                 "windows"   "0x2c"
+                "windows64" "0x48"
             }
 
             "CSendTablePrecalc propcount"
             {
                 "linux"     "0x38"
                 "windows"   "0x38"
+                // x64: precalc layout verified against SendTable_WritePropList ([precalc+0x48] = props
+                // array) and the runtime precalc dump (count is the stable DWORD at +0x58).
+                "windows64" "0x58"
             }
         }
 
@@ -53,24 +62,28 @@
             {
                 "linux"     "ebx"
                 "windows"   "0x8"
+                "windows64" "rbx"
             }
 
             "SV_DetermineUpdateType propcount"
             {
                 "linux"     "esi"
                 "windows"   "edi"
+                "windows64" "rdi"
             }
 
             "SendTable_WritePropList table"
             {
                 "linux"     "0x8"
                 "windows"   "0x8"
+                "windows64" "0x38"
             }
 
             "SendTable_WritePropList output"
             {
                 "linux"     "0x14"
                 "windows"   "0x14"
+                "windows64" "r15"
             }
 
             // the other value in the comparison right after the break condition
@@ -78,12 +91,14 @@
             {
                 "linux"     "esi"
                 "windows"   "eax"
+                "windows64" "rdi"
             }
 
             "SendTable_WritePropList output_lastpropindex"
             {
                 "linux"     "-0x48"
                 "windows"   "-0x3c"
+                "windows64" "-0x40"
             }
         }
 
@@ -95,6 +110,7 @@
                 "linux"     "@_ZN11CGameServer18SendClientMessagesEb"
                 "windows"   "\x55\x8B\xEC\x81\xEC\x34\x04\x00\x00\x53\x56\x8B\xF1"
                 // 55 8B EC 81 EC 34 04 00 00 53 56 8B F1
+                "windows64" "\x40\x55\x56\x41\x56\x48\x81\xEC\x40\x03\x00\x00\x48\x8B\xF2\x48\x8B\xE9\xE8\x2A"
             }
 
             "SV_DetermineUpdateType start"
@@ -104,6 +120,8 @@
                 // 8B 40 ? 3B 43 ?
                 "windows"   "\x8B\x75\x2A\x8B\x56\x2A\x3B\x56\x2A\x7D\x2A\xB8\x10\x00\x00\x00"
                 // 8B 75 ? 8B 56 ? 3B 56 ? 7D ? B8 10 00 00 00
+                "windows64" "\x3B\x51\x2A\x7D\x2A\xB8\x20\x00\x00\x00\x33\xFF"
+                // 3B 51 ? 7D ? B8 20 00 00 00 33 FF (cmp edx,[rcx+?]; jge; mov eax,0x20; xor edi,edi)
             }
 
             "SV_DetermineUpdateType pack equality check"
@@ -113,6 +131,8 @@
                 // 39 4B ? 74 ? 80 BB ? ? ? ? 00
                 "windows"   "\x3B\x46\x2A\x0F\x84\x2A\x2A\x2A\x2A\x80\xBE\x2A\x2A\x2A\x2A\x00"
                 // 3B 46 ? 0F 84 ? ? ? ? 80 BE ? ? ? ? 00
+                "windows64" "\x48\x8B\x43\x50\x48\x39\x43\x48\x0F\x84\x2A\x2A\x2A\x2A"
+                // 48 8B 43 50 48 39 43 48 0F 84 ? ? ? ? (mov rax,[rbx+0x50]; cmp [rbx+0x48],rax; je)
             }
 
             "SV_DetermineUpdateType props changed call"
@@ -122,6 +142,8 @@
                 // 8D BD ? ? ? ? 68 00 10 00 00 57 FF 72 ?
                 "windows"   "\x8B\x4E\x2A\x8D\x85\x2A\x2A\x2A\x2A\x68\x00\x10\x00\x00"
                 // 8B 4E ? 8D 85 ? ? ? ? 68 00 10 00 00
+                "windows64" "\x48\x8B\x93\x58\x01\x00\x00\x4C\x8D\x44\x24\x40"
+                // 48 8B 93 58 01 00 00 4C 8D 44 24 40 (mov rdx,[rbx+0x158]; lea r8,[rsp+0x40])
             }
 
             "SV_DetermineUpdateType VCR print check"
@@ -131,6 +153,8 @@
                 // A1 ? ? ? ? 8B 40 ? 85 C0 74 ? 8D 04 B5 ? ? ? ?
                 "windows"   "\xA1\x2A\x2A\x2A\x2A\x83\x78\x2A\x00\x74\x2A\xA1\x2A\x2A\x2A\x2A\x8B\x08"
                 // A1 ? ? ? ? 83 78 ? 00 74 ? A1 ? ? ? ? 8B 08
+                "windows64" "\x48\x8B\x05\x2A\x2A\x2A\x2A\x83\x78\x58\x00\x74\x25"
+                // 48 8B 05 ? ? ? ? 83 78 58 00 74 25 (mov rax,[rip+?]; cmp dword ptr [rax+0x58],0; je)
             }
 
             "SV_DetermineUpdateType positive propcount block"
@@ -140,6 +164,8 @@
                 // 8B 53 ? 31 C9 89 D8 E8 ? ? ? ? 8B 43 ?
                 "windows"   "\x6A\x00\xFF\x76\x2A\x56\xE8\x2A\x2A\x2A\x2A\x57"
                 // 6A 00 FF 76 ? 56 E8 ? ? ? ? 57
+                "windows64" "\x8B\x53\x2A\x45\x33\xC0\x48\x8B\xCB\xE8\x2A\x2A\x2A\x2A\x44\x8B\xC7"
+                // 8B 53 ? 45 33 C0 48 8B CB E8 ? ? ? ? 44 8B C7 (mov edx,[rbx+?]; xor r8d,r8d; mov rcx,rbx; call; mov r8d,edi)
             }
 
             "SendTable_WritePropList"
@@ -149,6 +175,8 @@
                 // 55 89 E5 57 56 53 83 EC 5C 8B 4D ? 8B 75 ?
                 "windows"   "\x55\x8B\xEC\x81\xEC\x84\x02\x00\x00\x83\x7D\x2A\x00"
                 // 55 8B EC 81 EC 84 02 00 00 83 7D ? 00
+                "windows64" "\x4C\x89\x4C\x24\x20\x48\x89\x4C\x24\x08\x55\x53\x56\x57\x41\x55"
+                // 4C 89 4C 24 20 48 89 4C 24 08 55 53 56 57 41 55
             }
 
             "SendTable_WritePropList loop break condition" // in SendTable_WritePropList
@@ -158,6 +186,8 @@
                 // 3D FF 0F 00 00 0F 87 ? ? ? ? 39 C6
                 "windows"   "\x81\xFB\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\xD8"
                 // 81 FB 00 10 00 00 0F 83 ? ? ? ? 3B D8
+                "windows64" "\x81\xFF\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\xF8"
+                // 81 FF 00 10 00 00 0F 83 ? ? ? ? 3B F8 (cmp edi,0x1000; jae; cmp edi,eax)
             }
 
             "SendTable_WritePropList loop continue" // in SendTable_WritePropList
@@ -167,6 +197,8 @@
                 // 83 45 ? 01 83 45 ? 04
                 "windows"   "\x8B\x45\x2A\x41\x8B\x35\x2A\x2A\x2A\x2A"
                 // 8B 45 ? 41 8B 35 ? ? ? ?
+                "windows64" "\xFF\xC1\x49\x83\xC5\x04\x89\x4D\xBC\x3B\x4D\x68"
+                // FF C1 49 83 C5 04 89 4D BC 3B 4D 68 (inc ecx; add r13,4; mov [rbp-0x44],ecx; cmp ecx,[rbp+0x68])
             }
 
             "&g_PropTypeFns"
@@ -180,6 +212,15 @@
                 "library"   "engine"
                 "windows"   "\x8B\x04\x85\x2A\x2A\x2A\x2A\xFF\xD0\x83\xC4\x14"
                 // 8B 04 85 ? ? ? ? FF D0 83 C4 14 in SendTable_EncodeProp inlined in SendTable_Encode
+                "windows64" "\x48\x8D\x05\x2A\x2A\x2A\x2A\x42\xFF\x54\xC0\x40\x8B\x7D"
+                // 48 8D 05 ? ? ? ? 42 FF 54 C0 40 (lea rax,[rip+?]; call [rax+r8*8+0x40] in the encode dispatch)
+            }
+
+            "&g_PropTypeFns Encode member (windows64)"
+            {
+                "library"   "engine"
+                "windows64" "\x90\x3B\x18\x80\x01\x00\x00\x00"
+                // 90 3B 18 80 01 00 00 00 = QWORD 0x180183B90 at &g_PropTypeFns[0].Encode (0x18047a3b0)
             }
         }
 
@@ -195,6 +236,10 @@
                 {
                     "signature" "mov eax,[eax*0x4 + g_PropTypeFns]"
                     "read"      "3" // &g_PropTypeFns
+                }
+                "windows64"
+                {
+                    "signature" "&g_PropTypeFns Encode member (windows64)"
                 }
             }
         }
