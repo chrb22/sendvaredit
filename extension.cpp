@@ -252,8 +252,11 @@ EntryList g_entrylist;
 
 
 
-struct RegisterInfo { const char* name;  uint8_t offset; };
-#define REG_INFO(NAME) { #NAME, (uint8_t)offsetof(safetyhook::Context, NAME) }
+// NOTE: on x64 the register offsets within safetyhook::Context64 exceed 255 (xmm block is 256 bytes, so
+// e.g. rbx is at 0x170). A uint8_t would truncate them and every register variable would read the wrong
+// XMM slot (e.g. 0x170 & 0xFF == 0x70 == xmm7), corrupting entitywriteinfo and hanging/crashing the server.
+struct RegisterInfo { const char* name;  int32_t offset; };
+#define REG_INFO(NAME) { #NAME, (int32_t)offsetof(safetyhook::Context, NAME) }
 RegisterInfo g_registers[] {
 #if SAFETYHOOK_ARCH_X86_64
     REG_INFO(xmm0),
@@ -1209,6 +1212,7 @@ const sp_nativeinfo_t MyNatives[] =
     {"SendVarFloat", smn_SendVarFloat},
     {"SendVarVector", smn_SendVarVector},
     {"SendVarVectorXY", smn_SendVarVectorXY},
+    {"SendVarString", smn_SendVarString},
     {"SetSendVar", smn_SetSendVar},
     {"ReplaceSendVar", smn_ReplaceSendVar},
     {"OmitSendVar", smn_OmitSendVar},
