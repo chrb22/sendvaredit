@@ -27,7 +27,7 @@ It is not guaranteed that a client will receive an update every frame (`cl_updat
     - `cd sendvaredit`
     - `mkdir build`
     - `cd build`
-    - `CC=gcc CXX=g++ python ../configure.py --mms-path="../../mmsource" --sm-path="../../sourcemod" --hl2sdk-manifest-path="../../sourcemod/hl2sdk-manifests" --hl2sdk-root="../.." --sdks=present --targets=x86 --enable-optimize`
+    - `python ../configure.py --mms-path="../../mmsource" --sm-path="../../sourcemod" --hl2sdk-manifest-path="../../sourcemod/hl2sdk-manifests" --hl2sdk-root="../.." --sdks=present --targets=x86 --enable-optimize`
 5. Compile extension.
     - `ambuild`
     - The build will be in `sendvaredit/build/package`
