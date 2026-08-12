@@ -26,7 +26,7 @@ jobs:
       SOURCEMOD_VERSION: '1.12'
       CACHE_PATH: 'cache'
       IN_CONTAINER: ${{ matrix.platform.containerImage != '' }}
-      PYTHON_VERSION: '3.8'
+      PYTHON_VERSION: '3.13'
 
     steps:
       - name: Install Linux container dependencies
@@ -80,7 +80,7 @@ jobs:
           path: ${{ env.CACHE_PATH }}/hl2sdk-tf2
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         if: ${{ !(startsWith( runner.os, 'Linux' ) && env.IN_CONTAINER == 'true') }}
         with:
           python-version: ${{ env.PYTHON_VERSION }}
