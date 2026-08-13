@@ -7,28 +7,19 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.os }} ${{ matrix.arch }}
+    name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-26.04
-            arch: x86
             cc: clang-22
             cxx: clang++-22
-          - os: ubuntu-26.04
-            arch: x86_64
-            cc: clang-22
-            cxx: clang++-22
+            targets: x86,x86_64
           - os: windows-2025
-            arch: x86
             cc: msvc
-            msvc_arch: x86
-          - os: windows-2025
-            arch: x86_64
-            cc: msvc
-            msvc_arch: x64
+            targets: x86,x86_64
 
     env:
       # We currently only support tf2
@@ -107,12 +98,6 @@ jobs:
           ${{ matrix.cc }} --version
           ${{ matrix.cxx }} --version
 
-      - name: Set up MSVC environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: ${{ matrix.msvc_arch }}
-
       - name: Configure
         shell: bash
         working-directory: sendvaredit
@@ -124,7 +109,7 @@ jobs:
             --hl2sdk-root="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}" \
             --sm-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod" \
             --hl2sdk-manifest-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod/hl2sdk-manifests" \
-            --targets=${{ matrix.arch }}
+            --targets=${{ matrix.targets }}
 
       - name: Build
         shell: bash
@@ -136,30 +121,11 @@ jobs:
             python -c "from ambuild2.run import cli_run; cli_run()"
           fi
 
-      - name: Stage build output
-        shell: bash
-        run: |
-          set -e
-          case "${{ matrix.os }}" in
-            windows-*) ext=dll ;;
-            *) ext=so ;;
-          esac
-          if [ "${{ matrix.arch }}" = "x86" ]; then
-            bin="sendvaredit/build/package/addons/sourcemod/extensions/sendvaredit.ext.2.tf2.$ext"
-          else
-            bin="sendvaredit/build/package/addons/sourcemod/extensions/x64/sendvaredit.ext.2.tf2.$ext"
-          fi
-          mkdir -p dist
-          cp "$bin" "dist/sendvaredit.ext.2.tf2.$ext"
-          cp sendvaredit/build/package/addons/sourcemod/scripting/include/sendvaredit.inc dist/sendvaredit.inc
-          cp sendvaredit/build/package/addons/sourcemod/gamedata/sendvaredit.txt dist/sendvaredit.txt
-          ls -la dist
-
-      - name: Upload extension
+      - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: sendvaredit-${{ matrix.os }}-${{ matrix.arch }}
-          path: dist/
+          name: sendvaredit-${{ matrix.os }}
+          path: sendvaredit/build/package
           if-no-files-found: error
 
   release:
@@ -170,7 +136,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Download binaries
+      - name: Download packages
         uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -179,28 +145,14 @@ jobs:
         shell: bash
         run: |
           set -e
-          mkdir -p pkg-linux/addons/sourcemod/extensions/x64
-          mkdir -p pkg-linux/addons/sourcemod/scripting/include
-          mkdir -p pkg-linux/addons/sourcemod/gamedata
-          cp artifacts/sendvaredit-ubuntu-26.04-x86/sendvaredit.ext.2.tf2.so pkg-linux/addons/sourcemod/extensions/sendvaredit.ext.2.tf2.so
-          cp artifacts/sendvaredit-ubuntu-26.04-x86_64/sendvaredit.ext.2.tf2.so pkg-linux/addons/sourcemod/extensions/x64/sendvaredit.ext.2.tf2.so
-          cp artifacts/sendvaredit-ubuntu-26.04-x86_64/sendvaredit.inc pkg-linux/addons/sourcemod/scripting/include/sendvaredit.inc
-          cp artifacts/sendvaredit-ubuntu-26.04-x86_64/sendvaredit.txt pkg-linux/addons/sourcemod/gamedata/sendvaredit.txt
-          tar -czf sendvaredit_${{ github.ref_name }}_linux.tar.gz -C pkg-linux .
+          tar -czf sendvaredit_${{ github.ref_name }}_linux.tar.gz -C artifacts/sendvaredit-ubuntu-26.04 .
           ls -la sendvaredit_${{ github.ref_name }}_linux.tar.gz
 
       - name: Package Windows (zip)
         shell: bash
         run: |
           set -e
-          mkdir -p pkg-windows/addons/sourcemod/extensions/x64
-          mkdir -p pkg-windows/addons/sourcemod/scripting/include
-          mkdir -p pkg-windows/addons/sourcemod/gamedata
-          cp artifacts/sendvaredit-windows-2025-x86/sendvaredit.ext.2.tf2.dll pkg-windows/addons/sourcemod/extensions/sendvaredit.ext.2.tf2.dll
-          cp artifacts/sendvaredit-windows-2025-x86_64/sendvaredit.ext.2.tf2.dll pkg-windows/addons/sourcemod/extensions/x64/sendvaredit.ext.2.tf2.dll
-          cp artifacts/sendvaredit-windows-2025-x86_64/sendvaredit.inc pkg-windows/addons/sourcemod/scripting/include/sendvaredit.inc
-          cp artifacts/sendvaredit-windows-2025-x86_64/sendvaredit.txt pkg-windows/addons/sourcemod/gamedata/sendvaredit.txt
-          (cd pkg-windows && zip -r ../sendvaredit_${{ github.ref_name }}_windows.zip .)
+          (cd artifacts/sendvaredit-windows-2025 && zip -r ../../sendvaredit_${{ github.ref_name }}_windows.zip .)
           ls -la sendvaredit_${{ github.ref_name }}_windows.zip
 
       - name: Create GitHub release
