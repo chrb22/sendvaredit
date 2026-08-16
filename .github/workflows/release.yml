@@ -6,161 +6,65 @@ on:
       - v**
 
 jobs:
-  build:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-26.04
-            cc: clang-22
-            cxx: clang++-22
-            targets: x86,x86_64
-          - os: windows-2025
-            cc: msvc
-            targets: x86,x86_64
-
-    env:
-      # We currently only support tf2
-      SDKS: '["tf2"]'
-      MMSOURCE_VERSION: '1.12'
-      SOURCEMOD_VERSION: '1.12'
-      CACHE_PATH: 'cache'
-      PYTHON_VERSION: '3.13'
-
-    steps:
-      - uses: actions/checkout@v4
-        name: Repository checkout
-        with:
-          fetch-depth: 0
-          submodules: true
-          path: sendvaredit
-
-      - uses: actions/checkout@v4
-        name: Sourcemod checkout
-        with:
-          repository: alliedmodders/sourcemod
-          ref: ${{ env.SOURCEMOD_VERSION }}-dev
-          submodules: true
-          path: ${{ env.CACHE_PATH }}/sourcemod
-
-      - uses: actions/checkout@v4
-        name: Metamod-Source checkout
-        with:
-          repository: alliedmodders/metamod-source
-          ref: ${{ env.MMSOURCE_VERSION }}-dev
-          path: ${{ env.CACHE_PATH }}/metamod
-
-      - uses: actions/checkout@v4
-        name: AMBuild checkout
-        with:
-          repository: alliedmodders/ambuild
-          ref: master
-          path: ${{ env.CACHE_PATH }}/ambuild
-
-      - uses: actions/checkout@v4
-        name: Checkout TF2 SDK
-        with:
-          repository: alliedmodders/hl2sdk
-          ref: tf2
-          path: ${{ env.CACHE_PATH }}/hl2sdk-tf2
-
-      - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-
-      - name: Setup AMBuild
-        working-directory: ${{ env.CACHE_PATH }}
-        run: |
-          pip install ./ambuild
-
-      - name: Linux dependencies
-        if: startsWith(runner.os, 'Linux')
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gcc-multilib g++-multilib libstdc++6 lib32stdc++6 \
-            libc6-dev libc6-dev-i386 linux-libc-dev \
-            linux-libc-dev:i386 lib32z1-dev ${{ matrix.cc }}
-
-      - name: Select clang compiler
-        if: startsWith(runner.os, 'Linux')
-        run: |
-          echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
-          echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
-          ${{ matrix.cc }} --version
-          ${{ matrix.cxx }} --version
-
-      - name: Configure
-        shell: bash
-        working-directory: sendvaredit
-        run: |
-          mkdir build
-          cd build
-          python ../configure.py --enable-optimize --sdks=${{ join(fromJSON(env.SDKS)) }} \
-            --mms-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/metamod" \
-            --hl2sdk-root="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}" \
-            --sm-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod" \
-            --hl2sdk-manifest-path="$GITHUB_WORKSPACE/${{ env.CACHE_PATH }}/sourcemod/hl2sdk-manifests" \
-            --targets=${{ matrix.targets }}
-
-      - name: Build
-        shell: bash
-        working-directory: sendvaredit/build
-        run: |
-          if command -v ambuild >/dev/null 2>&1; then
-            ambuild
-          else
-            python -c "from ambuild2.run import cli_run; cli_run()"
-          fi
-
-      - name: Upload package
-        uses: actions/upload-artifact@v4
-        with:
-          name: sendvaredit-${{ matrix.os }}
-          path: sendvaredit/build/package
-          if-no-files-found: error
+  build-extension:
+    uses: ./.github/workflows/ci-ext.yml
 
   release:
-    name: Publish release
-    needs: build
+    permissions: write-all
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    needs: [build-extension]
 
     steps:
-      - name: Download packages
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+    - run: sudo apt-get install -y tree
 
-      - name: Package Linux (tar.gz)
-        shell: bash
-        run: |
-          set -e
-          tar -czf sendvaredit_${{ github.ref_name }}_linux.tar.gz -C artifacts/sendvaredit-ubuntu-26.04 .
-          ls -la sendvaredit_${{ github.ref_name }}_linux.tar.gz
+    - name: Download Linux release
+      uses: actions/download-artifact@v4
+      with:
+        name: sendvaredit_Linux
+        path: sendvaredit_linux
 
-      - name: Package Windows (zip)
-        shell: bash
-        run: |
-          set -e
-          (cd artifacts/sendvaredit-windows-2025 && zip -r ../../sendvaredit_${{ github.ref_name }}_windows.zip .)
-          ls -la sendvaredit_${{ github.ref_name }}_windows.zip
+    - name: Download Windows release
+      uses: actions/download-artifact@v4
+      with:
+        name: sendvaredit_Windows
+        path: sendvaredit_windows
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ github.ref_name }}
+    - name: Prepare archives
+      run: |
+        cd sendvaredit_linux
+        tar -czf sendvaredit_linux.tar.gz *
+        cd ../sendvaredit_windows
+        zip -r sendvaredit_windows.zip .
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
           tag_name: ${{ github.ref_name }}
-          body: "Release ${{ github.ref_name }}"
-          files: |
-            sendvaredit_${{ github.ref_name }}_linux.tar.gz
-            sendvaredit_${{ github.ref_name }}_windows.zip
+          release_name: ${{ github.ref_name }}
+          body: |
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+
+    - name: Upload Linux release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./sendvaredit_linux/sendvaredit_linux.tar.gz
+        asset_name: sendvaredit_${{ github.ref_name }}_linux.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload Windows release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./sendvaredit_windows/sendvaredit_windows.zip
+        asset_name: sendvaredit_${{ github.ref_name }}_windows.zip
+        asset_content_type: application/zip
