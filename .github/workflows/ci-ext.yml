@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         platform: [
-          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22, targets: 'x86' },
+          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22, targets: 'x86,x86_64' },
           { name: windows-2025, os: windows-2025, cc: msvc, targets: 'x86,x86_64' },
         ]
 

@@ -9,6 +9,7 @@
                 "linux"     "0x18"
                 "windows"   "0x18"
                 "windows64" "0x28"
+                "linux64"   "0x28"
             }
 
             "CEntityWriteInfo output"
@@ -16,6 +17,7 @@
                 "linux"     "0x24"
                 "windows"   "0x24"
                 "windows64" "0x38"
+                "linux64"   "0x38"
             }
 
             "CEntityWriteInfo client"
@@ -23,6 +25,7 @@
                 "linux"     "0x28"
                 "windows"   "0x28"
                 "windows64" "0x40"
+                "linux64"   "0x40"
             }
 
             "CEntityWriteInfo oldpack"
@@ -30,6 +33,7 @@
                 "linux"     "0x2c"
                 "windows"   "0x2c"
                 "windows64" "0x48"
+                "linux64"   "0x48"
             }
 
             "CEntityWriteInfo newpack"
@@ -37,6 +41,7 @@
                 "linux"     "0x30"
                 "windows"   "0x30"
                 "windows64" "0x50"
+                "linux64"   "0x50"
             }
 
             "CSendTablePrecalc props"
@@ -44,6 +49,7 @@
                 "linux"     "0x2c"
                 "windows"   "0x2c"
                 "windows64" "0x48"
+                "linux64"   "0x48"
             }
 
             "CSendTablePrecalc propcount"
@@ -53,6 +59,7 @@
                 // x64: precalc layout verified against SendTable_WritePropList ([precalc+0x48] = props
                 // array) and the runtime precalc dump (count is the stable DWORD at +0x58).
                 "windows64" "0x58"
+                "linux64"   "0x58"
             }
         }
 
@@ -63,6 +70,7 @@
                 "linux"     "ebx"
                 "windows"   "0x8"
                 "windows64" "rbx"
+                "linux64"   "rbx"
             }
 
             "SV_DetermineUpdateType propcount"
@@ -70,6 +78,7 @@
                 "linux"     "esi"
                 "windows"   "edi"
                 "windows64" "rdi"
+                "linux64"   "r12"
             }
 
             "SendTable_WritePropList table"
@@ -77,6 +86,7 @@
                 "linux"     "0x8"
                 "windows"   "0x8"
                 "windows64" "0x38"
+                "linux64"   "-0x80"
             }
 
             "SendTable_WritePropList output"
@@ -84,6 +94,7 @@
                 "linux"     "0x14"
                 "windows"   "0x14"
                 "windows64" "r15"
+                "linux64"   "r12"
             }
 
             // the other value in the comparison right after the break condition
@@ -92,6 +103,7 @@
                 "linux"     "esi"
                 "windows"   "eax"
                 "windows64" "rdi"
+                "linux64"   "rax"
             }
 
             "SendTable_WritePropList output_lastpropindex"
@@ -99,6 +111,7 @@
                 "linux"     "-0x48"
                 "windows"   "-0x3c"
                 "windows64" "-0x40"
+                "linux64"   "-0x58"
             }
         }
 
@@ -111,6 +124,7 @@
                 "windows"   "\x55\x8B\xEC\x81\xEC\x34\x04\x00\x00\x53\x56\x8B\xF1"
                 // 55 8B EC 81 EC 34 04 00 00 53 56 8B F1
                 "windows64" "\x40\x55\x56\x41\x56\x48\x81\xEC\x40\x03\x00\x00\x48\x8B\xF2\x48\x8B\xE9\xE8\x2A"
+                "linux64"   "@_ZN11CGameServer18SendClientMessagesEb"
             }
 
             "SV_DetermineUpdateType start"
@@ -122,6 +136,8 @@
                 // 8B 75 ? 8B 56 ? 3B 56 ? 7D ? B8 10 00 00 00
                 "windows64" "\x3B\x51\x2A\x7D\x2A\xB8\x20\x00\x00\x00\x33\xFF"
                 // 3B 51 ? 7D ? B8 20 00 00 00 33 FF (cmp edx,[rcx+?]; jge; mov eax,0x20; xor edi,edi)
+                "linux64"   "\x8B\x77\x28\x3B\x77\x24\x7C\x43\x7F\x5F\x80\x7F\x08\x00"
+                // 8B 77 28 3B 77 24 7C 43 7F 5F 80 7F 08 00 (mov esi,[rdi+0x28]; cmp esi,[rdi+0x24]; jl; jg; cmp byte [rdi+8],0)
             }
 
             "SV_DetermineUpdateType pack equality check"
@@ -133,6 +149,8 @@
                 // 3B 46 ? 0F 84 ? ? ? ? 80 BE ? ? ? ? 00
                 "windows64" "\x48\x8B\x43\x50\x48\x39\x43\x48\x0F\x84\x2A\x2A\x2A\x2A"
                 // 48 8B 43 50 48 39 43 48 0F 84 ? ? ? ? (mov rax,[rbx+0x50]; cmp [rbx+0x48],rax; je)
+                "linux64"   "\x48\x8B\x7B\x50\x48\x39\x7B\x48\x74\x55\x80\xBB\x7C\x01"
+                // 48 8B 7B 50 48 39 7B 48 74 55 80 BB 7C 01 (mov rdi,[rbx+0x50]; cmp [rbx+0x48],rdi; je; cmp byte [rbx+0x17c],0)
             }
 
             "SV_DetermineUpdateType props changed call"
@@ -144,6 +162,8 @@
                 // 8B 4E ? 8D 85 ? ? ? ? 68 00 10 00 00
                 "windows64" "\x48\x8B\x93\x58\x01\x00\x00\x4C\x8D\x44\x24\x40"
                 // 48 8B 93 58 01 00 00 4C 8D 44 24 40 (mov rdx,[rbx+0x158]; lea r8,[rsp+0x40])
+                "linux64"   "\x48\x8B\x7B\x50\x48\x8B\x83\x58\x01\x00\x00\x8B\x70\x04"
+                // 48 8B 7B 50 48 8B 83 58 01 00 00 8B 70 04 (mov rdi,[rbx+0x50]; mov rax,[rbx+0x158]; mov esi,[rax+4])
             }
 
             "SV_DetermineUpdateType VCR print check"
@@ -155,6 +175,8 @@
                 // A1 ? ? ? ? 83 78 ? 00 74 ? A1 ? ? ? ? 8B 08
                 "windows64" "\x48\x8B\x05\x2A\x2A\x2A\x2A\x83\x78\x58\x00\x74\x25"
                 // 48 8B 05 ? ? ? ? 83 78 58 00 74 25 (mov rax,[rip+?]; cmp dword ptr [rax+0x58],0; je)
+                "linux64"   "\x48\x8D\x05\x2A\x2A\x2A\x2A\x48\x8B\x40\x38\x8B\x48\x58\x85\xC9\x74"
+                // 48 8D 05 ? ? ? ? 48 8B 40 38 8B 48 58 85 C9 74 (lea rax,[rip+?]; mov rax,[rax+0x38]; mov ecx,[rax+0x58]; test ecx,ecx; je)
             }
 
             "SV_DetermineUpdateType positive propcount block"
@@ -166,6 +188,8 @@
                 // 6A 00 FF 76 ? 56 E8 ? ? ? ? 57
                 "windows64" "\x8B\x53\x2A\x45\x33\xC0\x48\x8B\xCB\xE8\x2A\x2A\x2A\x2A\x44\x8B\xC7"
                 // 8B 53 ? 45 33 C0 48 8B CB E8 ? ? ? ? 44 8B C7 (mov edx,[rbx+?]; xor r8d,r8d; mov rcx,rbx; call; mov r8d,edi)
+                "linux64"   "\x8B\x73\x28\x31\xD2\x48\x89\xDF\xE8\x2A\x2A\x2A\x2A\x48\x8B\x43"
+                // 8B 73 28 31 D2 48 89 DF E8 ? ? ? ? 48 8B 43 (mov esi,[rbx+0x28]; xor edx,edx; mov rdi,rbx; call; mov rax,[rbx+0x48])
             }
 
             "SendTable_WritePropList"
@@ -177,6 +201,8 @@
                 // 55 8B EC 81 EC 84 02 00 00 83 7D ? 00
                 "windows64" "\x4C\x89\x4C\x24\x20\x48\x89\x4C\x24\x08\x55\x53\x56\x57\x41\x55"
                 // 4C 89 4C 24 20 48 89 4C 24 08 55 53 56 57 41 55
+                "linux64"   "\x55\x48\x89\xE5\x41\x57\x41\x56\x41\x55\x41\x54\x53\x48\x83\xEC\x58\x8B"
+                // 55 48 89 E5 41 57 41 56 41 55 41 54 53 48 83 EC 58 8B
             }
 
             "SendTable_WritePropList loop break condition" // in SendTable_WritePropList
@@ -188,6 +214,8 @@
                 // 81 FB 00 10 00 00 0F 83 ? ? ? ? 3B D8
                 "windows64" "\x81\xFF\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\xF8"
                 // 81 FF 00 10 00 00 0F 83 ? ? ? ? 3B F8 (cmp edi,0x1000; jae; cmp edi,eax)
+                "linux64"   "\x3D\xFF\x0F\x00\x00\x0F\x87\x2A\x2A\x2A\x2A\x39\xC3\x74"
+                // 3D FF 0F 00 00 0F 87 ? ? ? ? 39 C3 74 (cmp eax,0xfff; ja; cmp ebx,eax; je)
             }
 
             "SendTable_WritePropList loop continue" // in SendTable_WritePropList
@@ -199,12 +227,15 @@
                 // 8B 45 ? 41 8B 35 ? ? ? ?
                 "windows64" "\xFF\xC1\x49\x83\xC5\x04\x89\x4D\xBC\x3B\x4D\x68"
                 // FF C1 49 83 C5 04 89 4D BC 3B 4D 68 (inc ecx; add r13,4; mov [rbp-0x44],ecx; cmp ecx,[rbp+0x68])
+                "linux64"   "\x49\x83\xC7\x04\x4C\x39\x7D\x98\x0F\x85\x2A\x2A\x2A\x2A"
+                // 49 83 C7 04 4C 39 7D 98 0F 85 ? ? ? ? (add r15,4; cmp [rbp-0x68],r15; jne)
             }
 
             "&g_PropTypeFns"
             {
                 "library"   "engine"
                 "linux"     "@g_PropTypeFns"
+                "linux64"   "@g_PropTypeFns"
             }
 
             "mov eax,[eax*0x4 + g_PropTypeFns]"
@@ -240,6 +271,11 @@
                 "windows64"
                 {
                     "signature" "&g_PropTypeFns Encode member (windows64)"
+                }
+                "linux64"
+                {
+                    "signature" "&g_PropTypeFns"
+                    "offset"    "0x40" // &g_PropTypeFns[0].Encode
                 }
             }
         }
