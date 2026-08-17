@@ -4,7 +4,7 @@ A SourceMod extension that allows you to manipulate the sent values of networkab
 ## Installing
 Extract/copy the files into the game folder.
 
-Currently the extension only supports 32-bit TF2, but it can in idea work with other games by expanding the gamedata.
+Currently the extension only supports TF2, but it can in idea work with other games by expanding the gamedata.
 
 ## Usage
 The extension works with entity properties, the same that you're used to with the `SetEntProp[Type]` functions, except it doesn't set the entity property itself, but instead modifies the sent value. Since not all properties are networkable, the extension allows you to verify if an entity property is networkable through `HasNetworkableProp`. After you know a property is networkable, you can set its sent value with `SetSendVar`, replace it only if its already going to be sent with `ReplaceSendVar`, or prevent it from being sent with `OmitSendVar`. If a property has multiple edits applied at the same time, then the extension will prioritize edits that use most important action present (`Set` > `Replace` > `Omit`, individual > everyone) and choose the latest amongst those.
