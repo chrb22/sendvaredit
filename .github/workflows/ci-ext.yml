@@ -12,8 +12,10 @@ jobs:
     strategy:
       matrix:
         platform: [
-          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22 },
-          { name: windows-2025, os: windows-2025, cc: msvc },
+          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22, sm-branch: 1.12-dev },
+          { name: windows-2025, os: windows-2025, cc: msvc, sm-branch: 1.12-dev },
+          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22, sm-branch: master },
+          { name: windows-2025, os: windows-2025, cc: msvc, sm-branch: master },
         ]
 
     name: ${{ matrix.platform.name }} - ${{ matrix.platform.cc }}
@@ -23,7 +25,6 @@ jobs:
       # We currently only support tf2
       SDKS: '["tf2"]'
       MMSOURCE_VERSION: '1.12'
-      SOURCEMOD_VERSION: '1.12'
       CACHE_PATH: 'cache'
       IN_CONTAINER: ${{ matrix.platform.containerImage != '' }}
       PYTHON_VERSION: '3.13'
@@ -54,7 +55,7 @@ jobs:
         name: Sourcemod checkout
         with:
           repository: alliedmodders/sourcemod
-          ref: ${{ env.SOURCEMOD_VERSION }}-dev
+          ref: ${{ matrix.platform.sm-branch }}
           submodules: true
           path: ${{ env.CACHE_PATH }}/sourcemod
       
@@ -159,5 +160,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sendvaredit_${{ runner.os }}
+          name: sendvaredit_${{ runner.os }}_sm-${{ matrix.platform.sm-branch }}
           path: sendvaredit/build/package

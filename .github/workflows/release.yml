@@ -17,24 +17,40 @@ jobs:
     steps:
     - run: sudo apt-get install -y tree
 
-    - name: Download Linux release
+    - name: Download SM 1.12-dev Linux release
       uses: actions/download-artifact@v4
       with:
-        name: sendvaredit_Linux
-        path: sendvaredit_linux
+        name: sendvaredit_Linux_sm-1.12-dev
+        path: sendvaredit_linux_sm-1.12-dev
 
-    - name: Download Windows release
+    - name: Download SM master Linux release
       uses: actions/download-artifact@v4
       with:
-        name: sendvaredit_Windows
-        path: sendvaredit_windows
+        name: sendvaredit_Linux_sm-master
+        path: sendvaredit_linux_sm-master
+
+    - name: Download SM 1.12-dev Windows release
+      uses: actions/download-artifact@v4
+      with:
+        name: sendvaredit_Windows_sm-1.12-dev
+        path: sendvaredit_windows_sm-1.12-dev
+
+    - name: Download SM master Windows release
+      uses: actions/download-artifact@v4
+      with:
+        name: sendvaredit_Windows_sm-master
+        path: sendvaredit_windows_sm-master
 
     - name: Prepare archives
       run: |
-        cd sendvaredit_linux
-        tar -czf sendvaredit_linux.tar.gz *
-        cd ../sendvaredit_windows
-        zip -r sendvaredit_windows.zip .
+        cd sendvaredit_linux_sm-1.12-dev
+        tar -czf sendvaredit_linux_sm-1.12-dev.tar.gz *
+        cd ../sendvaredit_linux_sm-master
+        tar -czf sendvaredit_linux_sm-master.tar.gz *
+        cd ../sendvaredit_windows_sm-1.12-dev
+        zip -r sendvaredit_windows_sm-1.12-dev.zip .
+        cd ../sendvaredit_windows_sm-master
+        zip -r sendvaredit_windows_sm-master.zip .
 
     - name: Create Release
       id: create_release
@@ -49,22 +65,42 @@ jobs:
           draft: false
           prerelease: false
 
-    - name: Upload Linux release
+    - name: Upload SM 1.12-dev Linux release
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_linux/sendvaredit_linux.tar.gz
-        asset_name: sendvaredit_${{ github.ref_name }}_linux.tar.gz
+        asset_path: ./sendvaredit_linux/sendvaredit_linux_sm-1.12-dev.tar.gz
+        asset_name: sendvaredit_${{ github.ref_name }}_linux_sm-1.12-dev.tar.gz
         asset_content_type: application/gzip
 
-    - name: Upload Windows release
+    - name: Upload SM master Linux release
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_windows/sendvaredit_windows.zip
-        asset_name: sendvaredit_${{ github.ref_name }}_windows.zip
+        asset_path: ./sendvaredit_linux/sendvaredit_linux_sm-master.tar.gz
+        asset_name: sendvaredit_${{ github.ref_name }}_linux_sm-master.tar.gz
+        asset_content_type: application/gzip
+
+    - name: Upload SM 1.12-dev Windows release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./sendvaredit_windows/sendvaredit_windows_sm-1.12-dev.zip
+        asset_name: sendvaredit_${{ github.ref_name }}_windows_sm-1.12-dev.zip
+        asset_content_type: application/zip
+
+    - name: Upload SM master Windows release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./sendvaredit_windows/sendvaredit_windows_sm-master.zip
+        asset_name: sendvaredit_${{ github.ref_name }}_windows_sm-master.zip
         asset_content_type: application/zip
