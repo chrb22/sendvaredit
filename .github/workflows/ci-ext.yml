@@ -18,7 +18,7 @@ jobs:
           { name: windows-2025, os: windows-2025, cc: msvc, sm-branch: master },
         ]
 
-    name: ${{ matrix.platform.name }} - ${{ matrix.platform.cc }}
+    name: ${{ matrix.platform.name }} - ${{ matrix.platform.cc }} - sm-${{ matrix.platform.sm-branch }}
     runs-on: ${{ matrix.platform.os }}
 
     env:
