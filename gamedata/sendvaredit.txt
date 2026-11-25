@@ -56,8 +56,6 @@
             {
                 "linux"     "0x38"
                 "windows"   "0x38"
-                // x64: precalc layout verified against SendTable_WritePropList ([precalc+0x48] = props
-                // array) and the runtime precalc dump (count is the stable DWORD at +0x58).
                 "windows64" "0x58"
                 "linux64"   "0x58"
             }
@@ -67,18 +65,18 @@
         {
             "SV_DetermineUpdateType entitywriteinfo"
             {
-                "linux"     "ebx"
+                "linux"     "esi"
                 "windows"   "0x8"
                 "windows64" "rbx"
-                "linux64"   "rbx"
+                "linux64"   "r15"
             }
 
             "SV_DetermineUpdateType propcount"
             {
-                "linux"     "esi"
+                "linux"     "-0x804c"
                 "windows"   "edi"
                 "windows64" "rdi"
-                "linux64"   "r12"
+                "linux64"   "rbx"
             }
 
             "SendTable_WritePropList table"
@@ -86,7 +84,7 @@
                 "linux"     "0x8"
                 "windows"   "0x8"
                 "windows64" "0x38"
-                "linux64"   "-0x80"
+                "linux64"   "-0x78"
             }
 
             "SendTable_WritePropList output"
@@ -94,24 +92,24 @@
                 "linux"     "0x14"
                 "windows"   "0x14"
                 "windows64" "r15"
-                "linux64"   "r12"
+                "linux64"   "-0x58"
             }
 
             // the other value in the comparison right after the break condition
             "SendTable_WritePropList propindex"
             {
-                "linux"     "esi"
+                "linux"     "eax"
                 "windows"   "eax"
                 "windows64" "rdi"
-                "linux64"   "rax"
+                "linux64"   "r8"
             }
 
             "SendTable_WritePropList output_lastpropindex"
             {
-                "linux"     "-0x48"
+                "linux"     "-0x50"
                 "windows"   "-0x3c"
                 "windows64" "-0x40"
-                "linux64"   "-0x58"
+                "linux64"   "r12"
             }
         }
 
@@ -130,47 +128,47 @@
             "SV_DetermineUpdateType start"
             {
                 "library"   "engine"
-                "linux"     "\x8B\x40\x2A\x3B\x43\x2A"
-                // 8B 40 ? 3B 43 ?
+                "linux"     "\x8B\x40\x2A\x3B\x46\x2A"
+                // 8B 40 ? 3B 46 ? (mov eax,[eax+0x18]; cmp eax,[esi+0x14])
                 "windows"   "\x8B\x75\x2A\x8B\x56\x2A\x3B\x56\x2A\x7D\x2A\xB8\x10\x00\x00\x00"
                 // 8B 75 ? 8B 56 ? 3B 56 ? 7D ? B8 10 00 00 00
                 "windows64" "\x3B\x51\x2A\x7D\x2A\xB8\x20\x00\x00\x00\x33\xFF"
                 // 3B 51 ? 7D ? B8 20 00 00 00 33 FF (cmp edx,[rcx+?]; jge; mov eax,0x20; xor edi,edi)
-                "linux64"   "\x8B\x77\x28\x3B\x77\x24\x7C\x43\x7F\x5F\x80\x7F\x08\x00"
-                // 8B 77 28 3B 77 24 7C 43 7F 5F 80 7F 08 00 (mov esi,[rdi+0x28]; cmp esi,[rdi+0x24]; jl; jg; cmp byte [rdi+8],0)
+                "linux64"   "\x8B\x77\x28\x3B\x77\x24\x0F\x8C\x2A\x2A\x2A\x2A\x0F\x8F"
+                // 8B 77 28 3B 77 24 0F 8C ? ? ? ? 0F 8F (mov esi,[rdi+0x28]; cmp esi,[rdi+0x24]; jl near; jg near)
             }
 
             "SV_DetermineUpdateType pack equality check"
             {
                 "library"   "engine"
-                "linux"     "\x39\x4B\x2A\x74\x2A\x80\xBB\x2A\x2A\x2A\x2A\x00"
-                // 39 4B ? 74 ? 80 BB ? ? ? ? 00
+                "linux"     "\x39\x4E\x2A\x74\x2A\x80\xBE\x2A\x2A\x2A\x2A\x00"
+                // 39 4E ? 74 ? 80 BE ? ? ? ? 00 (cmp [esi+0x2c],ecx; je; cmp byte [esi+0x148],0)
                 "windows"   "\x3B\x46\x2A\x0F\x84\x2A\x2A\x2A\x2A\x80\xBE\x2A\x2A\x2A\x2A\x00"
                 // 3B 46 ? 0F 84 ? ? ? ? 80 BE ? ? ? ? 00
                 "windows64" "\x48\x8B\x43\x50\x48\x39\x43\x48\x0F\x84\x2A\x2A\x2A\x2A"
                 // 48 8B 43 50 48 39 43 48 0F 84 ? ? ? ? (mov rax,[rbx+0x50]; cmp [rbx+0x48],rax; je)
-                "linux64"   "\x48\x8B\x7B\x50\x48\x39\x7B\x48\x74\x55\x80\xBB\x7C\x01"
-                // 48 8B 7B 50 48 39 7B 48 74 55 80 BB 7C 01 (mov rdi,[rbx+0x50]; cmp [rbx+0x48],rdi; je; cmp byte [rbx+0x17c],0)
+                "linux64"   "\x49\x8B\x7F\x50\x49\x39\x7F\x48\x74\x2A\x41\x80\xBF\x7C\x01\x00\x00\x00"
+                // 49 8B 7F 50 49 39 7F 48 74 ? 41 80 BF 7C 01 00 00 00 (mov rdi,[r15+0x50]; cmp [r15+0x48],rdi; je; cmp byte [r15+0x17c],0)
             }
 
             "SV_DetermineUpdateType props changed call"
             {
                 "library"   "engine"
-                "linux"     "\x8D\xBD\x2A\x2A\x2A\x2A\x68\x00\x10\x00\x00\x57\xFF\x72\x2A"
-                // 8D BD ? ? ? ? 68 00 10 00 00 57 FF 72 ?
+                "linux"     "\x8B\x4E\x2A\x8B\x96\x2A\x2A\x2A\x2A\x8D\x85\x2A\x2A\x2A\x2A\x68\x00\x10\x00\x00"
+                // 8B 4E ? 8B 96 ? ? ? ? 8D 85 ? ? ? ? 68 00 10 00 00 (mov ecx,[esi+0x30]; mov edx,[esi+0x134]; lea eax,[ebp-0x8018]; push 0x1000)
                 "windows"   "\x8B\x4E\x2A\x8D\x85\x2A\x2A\x2A\x2A\x68\x00\x10\x00\x00"
                 // 8B 4E ? 8D 85 ? ? ? ? 68 00 10 00 00
                 "windows64" "\x48\x8B\x93\x58\x01\x00\x00\x4C\x8D\x44\x24\x40"
                 // 48 8B 93 58 01 00 00 4C 8D 44 24 40 (mov rdx,[rbx+0x158]; lea r8,[rsp+0x40])
-                "linux64"   "\x48\x8B\x7B\x50\x48\x8B\x83\x58\x01\x00\x00\x8B\x70\x04"
-                // 48 8B 7B 50 48 8B 83 58 01 00 00 8B 70 04 (mov rdi,[rbx+0x50]; mov rax,[rbx+0x158]; mov esi,[rax+4])
+                "linux64"   "\x49\x8B\x7F\x50\x49\x8B\x87\x58\x01\x00\x00\x8B\x30"
+                // 49 8B 7F 50 49 8B 87 58 01 00 00 8B 30 (mov rdi,[r15+0x50]; mov rax,[r15+0x158]; mov esi,[rax])
             }
 
             "SV_DetermineUpdateType VCR print check"
             {
                 "library"   "engine"
-                "linux"     "\xA1\x2A\x2A\x2A\x2A\x8B\x40\x2A\x85\xC0\x74\x2A\x8D\x04\xB5\x2A\x2A\x2A\x2A"
-                // A1 ? ? ? ? 8B 40 ? 85 C0 74 ? 8D 04 B5 ? ? ? ?
+                "linux"     "\x8B\x8D\x2A\x2A\x2A\x2A\x85\xC9\x7F\x2A"
+                // 8B 8D ? ? ? ? 85 C9 7F ? (mov ecx,[ebp-0x804c]; test ecx,ecx; jg short)
                 "windows"   "\xA1\x2A\x2A\x2A\x2A\x83\x78\x2A\x00\x74\x2A\xA1\x2A\x2A\x2A\x2A\x8B\x08"
                 // A1 ? ? ? ? 83 78 ? 00 74 ? A1 ? ? ? ? 8B 08
                 "windows64" "\x48\x8B\x05\x2A\x2A\x2A\x2A\x83\x78\x58\x00\x74\x25"
@@ -182,53 +180,53 @@
             "SV_DetermineUpdateType positive propcount block"
             {
                 "library"   "engine"
-                "linux"     "\x8B\x53\x2A\x31\xC9\x89\xD8\xE8\x2A\x2A\x2A\x2A\x8B\x43\x2A"
-                // 8B 53 ? 31 C9 89 D8 E8 ? ? ? ? 8B 43 ?
+                "linux"     "\x8B\x56\x2A\x31\xC9\x89\xF0\xE8\x2A\x2A\x2A\x2A\x8B\x46\x2A"
+                // 8B 56 ? 31 C9 89 F0 E8 ? ? ? ? 8B 46 ? (mov edx,[esi+0x18]; xor ecx,ecx; mov eax,esi; call SV_WriteDeltaHeader; mov eax,[esi+0x30])
                 "windows"   "\x6A\x00\xFF\x76\x2A\x56\xE8\x2A\x2A\x2A\x2A\x57"
                 // 6A 00 FF 76 ? 56 E8 ? ? ? ? 57
                 "windows64" "\x8B\x53\x2A\x45\x33\xC0\x48\x8B\xCB\xE8\x2A\x2A\x2A\x2A\x44\x8B\xC7"
                 // 8B 53 ? 45 33 C0 48 8B CB E8 ? ? ? ? 44 8B C7 (mov edx,[rbx+?]; xor r8d,r8d; mov rcx,rbx; call; mov r8d,edi)
-                "linux64"   "\x8B\x73\x28\x31\xD2\x48\x89\xDF\xE8\x2A\x2A\x2A\x2A\x48\x8B\x43"
-                // 8B 73 28 31 D2 48 89 DF E8 ? ? ? ? 48 8B 43 (mov esi,[rbx+0x28]; xor edx,edx; mov rdi,rbx; call; mov rax,[rbx+0x48])
+                "linux64"   "\x41\x8B\x77\x2A\x31\xD2\x4C\x89\xFF\xE8\x2A\x2A\x2A\x2A\x49\x8B\x47\x2A"
+                // 41 8B 77 ? 31 D2 4C 89 FF E8 ? ? ? ? 49 8B 47 ? (mov esi,[r15+0x28]; xor edx,edx; mov rdi,r15; call SV_WriteDeltaHeader; mov rax,[r15+0x48])
             }
 
             "SendTable_WritePropList"
             {
                 "library"   "engine"
-                "linux"     "\x55\x89\xE5\x57\x56\x53\x83\xEC\x5C\x8B\x4D\x2A\x8B\x75\x2A"
-                // 55 89 E5 57 56 53 83 EC 5C 8B 4D ? 8B 75 ?
+                "linux"     "\xE8\x2A\x2A\x2A\x2A\x05\x2A\x2A\x2A\x2A\x55\x89\xE5\x57\x56\x53\x83\xEC\x5C\x8B\x55\x2A\x8B\x7D\x2A"
+                // E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 5C 8B 55 ? 8B 7D ?
                 "windows"   "\x55\x8B\xEC\x81\xEC\x84\x02\x00\x00\x83\x7D\x2A\x00"
                 // 55 8B EC 81 EC 84 02 00 00 83 7D ? 00
                 "windows64" "\x4C\x89\x4C\x24\x20\x48\x89\x4C\x24\x08\x55\x53\x56\x57\x41\x55"
                 // 4C 89 4C 24 20 48 89 4C 24 08 55 53 56 57 41 55
-                "linux64"   "\x55\x48\x89\xE5\x41\x57\x41\x56\x41\x55\x41\x54\x53\x48\x83\xEC\x58\x8B"
-                // 55 48 89 E5 41 57 41 56 41 55 41 54 53 48 83 EC 58 8B
+                "linux64"   "\x55\x48\x89\xE5\x41\x57\x41\x56\x41\x55\x41\x54\x53\x48\x83\xEC\x58\x48\x89\x7D\x2A"
+                // 55 48 89 E5 41 57 41 56 41 55 41 54 53 48 83 EC 58 48 89 7D ? (mov [rbp-0x78],rdi)
             }
 
             "SendTable_WritePropList loop break condition" // in SendTable_WritePropList
             {
                 "library"   "engine"
-                "linux"     "\x3D\xFF\x0F\x00\x00\x0F\x87\x2A\x2A\x2A\x2A\x39\xC6"
-                // 3D FF 0F 00 00 0F 87 ? ? ? ? 39 C6
+                "linux"     "\x81\xFB\xFF\x0F\x00\x00\x77\x2A\x39\xC3"
+                // 81 FB FF 0F 00 00 77 ? 39 C3 (cmp ebx,0xfff; ja short; cmp ebx,eax)
                 "windows"   "\x81\xFB\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\xD8"
                 // 81 FB 00 10 00 00 0F 83 ? ? ? ? 3B D8
                 "windows64" "\x81\xFF\x00\x10\x00\x00\x0F\x83\x2A\x2A\x2A\x2A\x3B\xF8"
                 // 81 FF 00 10 00 00 0F 83 ? ? ? ? 3B F8 (cmp edi,0x1000; jae; cmp edi,eax)
-                "linux64"   "\x3D\xFF\x0F\x00\x00\x0F\x87\x2A\x2A\x2A\x2A\x39\xC3\x74"
-                // 3D FF 0F 00 00 0F 87 ? ? ? ? 39 C3 74 (cmp eax,0xfff; ja; cmp ebx,eax; je)
+                "linux64"   "\x41\x81\xF8\xFF\x0F\x00\x00\x77\x2A\x41\x39\xC0"
+                // 41 81 F8 FF 0F 00 00 77 ? 41 39 C0 (cmp r8d,0xfff; ja short; cmp r8d,eax)
             }
 
             "SendTable_WritePropList loop continue" // in SendTable_WritePropList
             {
                 "library"   "engine"
-                "linux"     "\x83\x45\x2A\x01\x83\x45\x2A\x04"
-                // 83 45 ? 01 83 45 ? 04
+                "linux"     "\x83\x45\xBC\x01\x8B\x45\xBC\x39\x45\x20\x0F\x85"
+                // 83 45 BC 01 8B 45 BC 39 45 20 0F 85 (add [ebp-0x44],1; mov eax,[ebp-0x44]; cmp [ebp+0x20],eax; jne)
                 "windows"   "\x8B\x45\x2A\x41\x8B\x35\x2A\x2A\x2A\x2A"
                 // 8B 45 ? 41 8B 35 ? ? ? ?
                 "windows64" "\xFF\xC1\x49\x83\xC5\x04\x89\x4D\xBC\x3B\x4D\x68"
                 // FF C1 49 83 C5 04 89 4D BC 3B 4D 68 (inc ecx; add r13,4; mov [rbp-0x44],ecx; cmp ecx,[rbp+0x68])
-                "linux64"   "\x49\x83\xC7\x04\x4C\x39\x7D\x98\x0F\x85\x2A\x2A\x2A\x2A"
-                // 49 83 C7 04 4C 39 7D 98 0F 85 ? ? ? ? (add r15,4; cmp [rbp-0x68],r15; jne)
+                "linux64"   "\x48\x8B\x45\xA0\x49\x83\xC7\x04\x49\x39\xC7\x0F\x85"
+                // 48 8B 45 A0 49 83 C7 04 49 39 C7 0F 85 (mov rax,[rbp-0x60]; add r15,4; cmp r15,rax; jne)
             }
 
             "&g_PropTypeFns"
@@ -275,7 +273,6 @@
                 "linux64"
                 {
                     "signature" "&g_PropTypeFns"
-                    "offset"    "0x40" // &g_PropTypeFns[0].Encode
                 }
             }
         }
