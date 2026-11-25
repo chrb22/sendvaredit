@@ -71,7 +71,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_linux/sendvaredit_linux_sm-1.12-dev.tar.gz
+        asset_path: ./sendvaredit_linux_sm-1.12-dev/sendvaredit_linux_sm-1.12-dev.tar.gz
         asset_name: sendvaredit_${{ github.ref_name }}_linux_sm-1.12-dev.tar.gz
         asset_content_type: application/gzip
 
@@ -81,7 +81,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_linux/sendvaredit_linux_sm-master.tar.gz
+        asset_path: ./sendvaredit_linux_sm-master/sendvaredit_linux_sm-master.tar.gz
         asset_name: sendvaredit_${{ github.ref_name }}_linux_sm-master.tar.gz
         asset_content_type: application/gzip
 
@@ -91,7 +91,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_windows/sendvaredit_windows_sm-1.12-dev.zip
+        asset_path: ./sendvaredit_windows_sm-1.12-dev/sendvaredit_windows_sm-1.12-dev.zip
         asset_name: sendvaredit_${{ github.ref_name }}_windows_sm-1.12-dev.zip
         asset_content_type: application/zip
 
@@ -101,6 +101,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./sendvaredit_windows/sendvaredit_windows_sm-master.zip
+        asset_path: ./sendvaredit_windows_sm-master/sendvaredit_windows_sm-master.zip
         asset_name: sendvaredit_${{ github.ref_name }}_windows_sm-master.zip
         asset_content_type: application/zip
