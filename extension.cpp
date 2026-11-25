@@ -1546,10 +1546,12 @@ bool SendVarEdit::SDK_OnLoad(char* error, size_t maxlength, bool late)
     gameconfs->AddUserConfigHook("Variables", &g_variables);
 
     IGameConfig* gameconf;
-    if (!gameconfs->LoadGameConfigFile("sendvaredit", &gameconf, error, maxlength)) {
-        gameconfs->RemoveUserConfigHook("Variables", &g_variables);
+    bool gameconf_loaded = gameconfs->LoadGameConfigFile("sendvaredit", &gameconf, error, maxlength);
+
+    gameconfs->RemoveUserConfigHook("Variables", &g_variables);
+
+    if (!gameconf_loaded)
         return false;
-    }
 
     // fill out game info struct
     {
@@ -1781,6 +1783,4 @@ void SendVarEdit::SDK_OnUnload()
 
     if (g_Hook_CGameServer__SendClientMessages.enabled())
         g_Hook_CGameServer__SendClientMessages = {};
-
-    gameconfs->RemoveUserConfigHook("Variables", &g_variables);
 }
