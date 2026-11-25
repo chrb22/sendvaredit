@@ -152,6 +152,9 @@ public:
 
     virtual void OnEntityDestroyed(CBaseEntity* entity) override
     {
+        if (!entity)
+            return;
+
         int index = gamehelpers->ReferenceToIndex(gamehelpers->EntityToReference(entity));
         if (!( 0 < index && index < MAX_EDICTS ))
             return;
