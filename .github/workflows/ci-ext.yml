@@ -12,9 +12,9 @@ jobs:
     strategy:
       matrix:
         platform: [
-          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22, sm-branch: 1.12-dev },
+          { name: ubuntu-24.04, os: ubuntu-26.04, cc: clang-20, cxx: clang++-20, sm-branch: 1.12-dev },
           { name: windows-2025, os: windows-2025, cc: msvc, sm-branch: 1.12-dev },
-          { name: ubuntu-26.04, os: ubuntu-26.04, cc: clang-22, cxx: clang++-22, sm-branch: master },
+          { name: ubuntu-24.04, os: ubuntu-26.04, cc: clang-20, cxx: clang++-20, sm-branch: master },
           { name: windows-2025, os: windows-2025, cc: msvc, sm-branch: master },
         ]
 
