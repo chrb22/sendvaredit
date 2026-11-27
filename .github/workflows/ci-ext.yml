@@ -144,9 +144,9 @@ jobs:
           ${{ matrix.platform.cxx }} --version
 
       - name: Remove -Wno-nontrivial-memcall
-        working-directory: sourcemod/hl2sdk-manifests/manifests
+        working-directory: ${{ env.CACHE_PATH }}
         run: |
-          sed -i '/-Wno-nontrivial-memcall/d' tf2.json
+          sed -i '/-Wno-nontrivial-memcall/d' sourcemod/hl2sdk-manifests/manifests/tf2.json
 
       - name: Build
         working-directory: sendvaredit
